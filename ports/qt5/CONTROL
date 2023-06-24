@@ -1,9 +1,9 @@
 Source: qt5
-Version: 5.12.8
+Version: 5.14.2
 Homepage: https://www.qt.io/
 Description: Qt5 Application Framework
 Build-Depends: qt5-base
-Default-Features: essentials, default
+Default-Features: latest
 
 Feature: essentials
 Build-Depends: qt5[core, tools, networkauth, quickcontrols2, multimedia, imageformats, declarative, svg, activeqt]
