@@ -113,10 +113,6 @@ Feature: graphicaleffects
 Build-Depends: qt5-graphicaleffects
 Description: 
 
-Feature: declarative
-Build-Depends: qt5-declarative
-Description: 
-
 Feature: imageformats
 Build-Depends: qt5-imageformats
 Description: 
