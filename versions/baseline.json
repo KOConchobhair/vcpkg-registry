@@ -2,7 +2,7 @@
   "default": {
     "qt5": {
       "baseline": "5.14.2",
-      "port-version": 0
+      "port-version": 1
     },
     "qt5-base": {
       "baseline": "5.14.2",
