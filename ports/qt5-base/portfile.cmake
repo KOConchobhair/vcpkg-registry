@@ -48,7 +48,7 @@ qt_download_submodule(  OUT_SOURCE_PATH SOURCE_PATH
                         PATCHES
                             patches/winmain_pro.patch   #Moves qtmain to manual-link
                             patches/windows_prf.patch   #fixes the qtmain dependency due to the above move
-                            patches/qt_app.patch        #Moves the target location of qt5 host apps to always install into the host dir. 
+                            patches/qt_app.patch        #Moves the target location of qt5 host apps to always install into the host dir.
                             patches/gui_configure.patch #Patches the gui configure.json to break freetype/fontconfig autodetection because it does not include its dependencies.
                             patches/icu.patch           #Help configure find static icu builds in vcpkg on windows
                             patches/xlib.patch          #Patches Xlib check to actually use Pkgconfig instead of makeSpec only
@@ -96,6 +96,7 @@ list(APPEND CORE_OPTIONS
     -system-doubleconversion
     -system-sqlite
     -system-harfbuzz
+    -sql-psql
     -icu
     -no-angle)      # Qt does not need to build angle. VCPKG will build angle!
 
@@ -173,6 +174,15 @@ find_library(EAY_DEBUG libeay32 crypto libcrypto libeay32d cryptod libcryptod PA
 set(FREETYPE_RELEASE_ALL "${FREETYPE_RELEASE} ${BZ2_RELEASE} ${LIBPNG_RELEASE} ${ZLIB_RELEASE} ${BROTLI_DEC_RELEASE} ${BROTLI_COMMON_RELEASE}")
 set(FREETYPE_DEBUG_ALL "${FREETYPE_DEBUG} ${BZ2_DEBUG} ${LIBPNG_DEBUG} ${ZLIB_DEBUG} ${BROTLI_DEC_DEBUG} ${BROTLI_COMMON_DEBUG}")
 
+# If HarfBuzz is built with GLib enabled, it must be statically link
+set(GLIB_LIB_VERSION 2.0)
+find_library(GLIB_RELEASE NAMES glib-${GLIB_LIB_VERSION} PATHS "${CURRENT_INSTALLED_DIR}/lib" NO_DEFAULT_PATH)
+find_library(GLIB_DEBUG NAMES glib-${GLIB_LIB_VERSION} PATHS "${CURRENT_INSTALLED_DIR}/debug/lib" NO_DEFAULT_PATH)
+if(GLIB_RELEASE MATCHES "-NOTFOUND" OR GLIB_DEBUG MATCHES "-NOTFOUND")
+    set(GLIB_RELEASE "")
+    set(GLIB_DEBUG "")
+endif()
+
 set(RELEASE_OPTIONS
             "LIBJPEG_LIBS=${JPEG_RELEASE}"
             "ZLIB_LIBS=${ZLIB_RELEASE}"
@@ -182,6 +192,7 @@ set(RELEASE_OPTIONS
             "ICU_LIBS=${ICU_RELEASE}"
             "QMAKE_LIBS_PRIVATE+=${BZ2_RELEASE}"
             "QMAKE_LIBS_PRIVATE+=${LIBPNG_RELEASE} ${ZLIB_RELEASE}"
+            "QMAKE_LIBS_PRIVATE+=${ICU_RELEASE}"
             "QMAKE_LIBS_PRIVATE+=${ZSTD_RELEASE}"
             )
 set(DEBUG_OPTIONS
@@ -193,6 +204,7 @@ set(DEBUG_OPTIONS
             "ICU_LIBS=${ICU_DEBUG}"
             "QMAKE_LIBS_PRIVATE+=${BZ2_DEBUG}"
             "QMAKE_LIBS_PRIVATE+=${LIBPNG_DEBUG} ${ZLIB_DEBUG}"
+            "QMAKE_LIBS_PRIVATE+=${ICU_DEBUG}"
             "QMAKE_LIBS_PRIVATE+=${ZSTD_DEBUG}"
             )
 
@@ -207,16 +219,16 @@ if(VCPKG_TARGET_IS_WINDOWS)
         list(APPEND CORE_OPTIONS -opengl dynamic) # other possible option without moving angle dlls: "-opengl desktop". "-opengel es2" only works with commented patch 
     endif()
     list(APPEND RELEASE_OPTIONS
-            "PSQL_LIBS=${PSQL_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
+            "PSQL_LIBS=${PSQL_RELEASE} ${PSQL_PORT_RELEASE} ${PSQL_COMMON_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
             "SQLITE_LIBS=${SQLITE_RELEASE}"
-            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE}"
+            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE} ${FREETYPE_RELEASE_ALL}"
             "OPENSSL_LIBS=${SSL_RELEASE} ${EAY_RELEASE} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
         )
-        
+
     list(APPEND DEBUG_OPTIONS
-            "PSQL_LIBS=${PSQL_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
+            "PSQL_LIBS=${PSQL_DEBUG} ${PSQL_PORT_DEBUG} ${PSQL_COMMON_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
             "SQLITE_LIBS=${SQLITE_DEBUG}"
-            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG}"
+            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG} ${FREETYPE_DEBUG_ALL}"
             "OPENSSL_LIBS=${SSL_DEBUG} ${EAY_DEBUG} ws2_32.lib secur32.lib advapi32.lib shell32.lib crypt32.lib user32.lib gdi32.lib"
         )
 elseif(VCPKG_TARGET_IS_LINUX)
@@ -225,16 +237,16 @@ elseif(VCPKG_TARGET_IS_LINUX)
         message(FATAL_ERROR "qt5 requires libgl1-mesa-dev and libglu1-mesa-dev, please use your distribution's package manager to install them.\nExample: \"apt-get install libgl1-mesa-dev libglu1-mesa-dev\"")
     endif()
     list(APPEND RELEASE_OPTIONS
-            "PSQL_LIBS=${PSQL_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
+            "PSQL_LIBS=${PSQL_RELEASE} ${PSQL_PORT_RELEASE} ${PSQL_TYPES_RELEASE} ${PSQL_COMMON_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
             "SQLITE_LIBS=${SQLITE_RELEASE} -ldl -lpthread"
-            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE}"
+            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE} ${FREETYPE_RELEASE_ALL} ${GLIB_RELEASE} -lpthread"
             "OPENSSL_LIBS=${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
             "FONTCONFIG_LIBS=${FONTCONFIG_RELEASE} ${FREETYPE_RELEASE} ${EXPAT_RELEASE} -luuid"
         )
     list(APPEND DEBUG_OPTIONS
-            "PSQL_LIBS=${PSQL_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
+            "PSQL_LIBS=${PSQL_DEBUG} ${PSQL_PORT_DEBUG} ${PSQL_TYPES_DEBUG} ${PSQL_COMMON_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
             "SQLITE_LIBS=${SQLITE_DEBUG} -ldl -lpthread"
-            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG}"
+            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG} ${FREETYPE_DEBUG_ALL} ${GLIB_DEBUG} -lpthread"
             "OPENSSL_LIBS=${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
             "FONTCONFIG_LIBS=${FONTCONFIG_DEBUG} ${FREETYPE_DEBUG} ${EXPAT_DEBUG} -luuid"
         )
@@ -258,21 +270,21 @@ elseif(VCPKG_TARGET_IS_OSX)
         set(ENV{QMAKE_MACOSX_DEPLOYMENT_TARGET} ${VCPKG_OSX_DEPLOYMENT_TARGET})
         message(STATUS "Enviromnent OSX SDK Version: $ENV{QMAKE_MACOSX_DEPLOYMENT_TARGET}")
         FILE(READ "${SOURCE_PATH}/mkspecs/common/macx.conf" _tmp_contents)
-        string(REPLACE "QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.12" "QMAKE_MACOSX_DEPLOYMENT_TARGET = ${VCPKG_OSX_DEPLOYMENT_TARGET}" _tmp_contents ${_tmp_contents})
+        string(REPLACE "QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.13" "QMAKE_MACOSX_DEPLOYMENT_TARGET = ${VCPKG_OSX_DEPLOYMENT_TARGET}" _tmp_contents ${_tmp_contents})
         FILE(WRITE "${SOURCE_PATH}/mkspecs/common/macx.conf" ${_tmp_contents})
     endif()
     #list(APPEND QT_PLATFORM_CONFIGURE_OPTIONS HOST_PLATFORM ${TARGET_MKSPEC})
     list(APPEND RELEASE_OPTIONS
-            "PSQL_LIBS=${PSQL_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
+            "PSQL_LIBS=${PSQL_RELEASE} ${PSQL_PORT_RELEASE} ${PSQL_TYPES_RELEASE} ${PSQL_COMMON_RELEASE} ${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
             "SQLITE_LIBS=${SQLITE_RELEASE} -ldl -lpthread"
-            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE} -framework ApplicationServices"
+            "HARFBUZZ_LIBS=${HARFBUZZ_RELEASE} ${FREETYPE_RELEASE_ALL} -framework ApplicationServices"
             "OPENSSL_LIBS=${SSL_RELEASE} ${EAY_RELEASE} -ldl -lpthread"
             "FONTCONFIG_LIBS=${FONTCONFIG_RELEASE} ${FREETYPE_RELEASE} ${EXPAT_RELEASE} -liconv"
         )
     list(APPEND DEBUG_OPTIONS
-            "PSQL_LIBS=${PSQL_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
+            "PSQL_LIBS=${PSQL_DEBUG} ${PSQL_PORT_DEBUG} ${PSQL_TYPES_DEBUG} ${PSQL_COMMON_DEBUG} ${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
             "SQLITE_LIBS=${SQLITE_DEBUG} -ldl -lpthread"
-            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG} -framework ApplicationServices"
+            "HARFBUZZ_LIBS=${HARFBUZZ_DEBUG} ${FREETYPE_DEBUG_ALL} -framework ApplicationServices"
             "OPENSSL_LIBS=${SSL_DEBUG} ${EAY_DEBUG} -ldl -lpthread"
             "FONTCONFIG_LIBS=${FONTCONFIG_DEBUG} ${FREETYPE_DEBUG} ${EXPAT_DEBUG} -liconv"
         )
