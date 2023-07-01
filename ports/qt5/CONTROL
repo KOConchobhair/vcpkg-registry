@@ -1,6 +1,6 @@
 Source: qt5
 Version: 5.14.2
-Port-Version: 2
+Port-Version: 3
 Homepage: https://www.qt.io/
 Description: Qt5 Application Framework
 Build-Depends: qt5-base
