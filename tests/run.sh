@@ -29,6 +29,12 @@ set -euo pipefail
 TRIPLET="${1:?triplet required}"
 MODE="${2:-consumer}"
 
+# For a cross target the host triplet must be the machine doing the building -
+# android and ios binaries cannot run here, and vcpkg needs host tools (moc, and
+# the host qtbase behind it) it can actually execute. Defaults to the target, which
+# is right for the four native triplets.
+HOST_TRIPLET="${HOST_TRIPLET:-$TRIPLET}"
+
 # Windows runs this under Git Bash, where the paths handed in by Actions are
 # Windows-native (D:\a\_temp). cygpath -m converts them to the mixed form
 # (D:/a/_temp) that both bash and vcpkg.exe accept.
@@ -108,7 +114,7 @@ ARGS=(
   install
   --x-manifest-root="$STAGE/tests"
   --triplet="$TRIPLET"
-  --host-triplet="$TRIPLET"
+  --host-triplet="$HOST_TRIPLET"
   --x-install-root="$WORK/installed"
   --x-buildtrees-root="$WORK/buildtrees"
   --x-packages-root="$WORK/packages"
@@ -198,7 +204,7 @@ case "$MODE" in
     ;;
 esac
 
-echo "=== vcpkg ${MODE} ${TRIPLET} ==="
+echo "=== vcpkg ${MODE} ${TRIPLET} (host ${HOST_TRIPLET}) ==="
 "$VCPKG" "${ARGS[@]}"
 
 case "$MODE" in

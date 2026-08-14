@@ -60,17 +60,21 @@
         "concurrent",
         "dnslookup",
         {
+          "name": "framework",
+          "platform": "osx"
+        },
+        {
           "name": "ioring",
           "platform": "linux | windows"
         },
         "network",
         {
           "name": "openssl",
-          "platform": "linux"
+          "platform": "linux | android"
         },
         {
           "name": "openssl-runtime",
-          "platform": "linux"
+          "platform": "linux | android"
         },
         "pcre2",
         {
@@ -79,7 +83,7 @@
         },
         {
           "name": "securetransport",
-          "platform": "osx"
+          "platform": "osx | ios"
         }
       ]
     }

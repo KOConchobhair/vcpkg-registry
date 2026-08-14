@@ -43,14 +43,16 @@ There is no classic-mode path here and none is wanted.
 ## In CI
 
 One job per triplet, all running `consumer`: the full install through the git
-registry plus `verify.sh`. All four runner images are free for public repositories.
+registry plus `verify.sh`. Every runner image used is free for public repositories.
 
 | Triplet | Runner | Notes |
 | ------- | ------ | ----- |
 | `x64-linux` | `ubuntu-22.04` | |
 | `arm64-linux` | `ubuntu-22.04-arm` | also covered locally |
-| `arm64-osx` | `macos-14` | prerequisites via `brew` |
+| `arm64-osx` | `macos-14` | prerequisites via `brew`; Qt frameworks |
 | `x64-windows` | `windows-2022` | Git Bash + `cygpath`; MSVC preinstalled |
+| `arm64-android` | `ubuntu-22.04` | cross, host `x64-linux`; needs `ANDROID_NDK_HOME` |
+| `arm64-ios` | `macos-14` | cross, host `arm64-osx`; everything static |
 
 `fail-fast: false`, so one platform breaking still reports the others. There is no
 separate resolve-only job — resolution happens before any compiling, so a broken

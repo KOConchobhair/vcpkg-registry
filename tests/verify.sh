@@ -27,9 +27,11 @@ skip() { printf '  skip  %s\n' "$1"; skipped=$((skipped+1)); }
 # naming and the binary-inspection tooling both differ, and pretending otherwise
 # would turn the Windows and macOS runs into checks that cannot fail.
 case "$TRIPLET" in
-  *-windows*) OS=windows; STATIC_EXT=lib; SHARED_EXT=dll; LIBPFX=""; TLS_BACKEND=schannel ;;
-  *-osx*|*-ios*) OS=osx; STATIC_EXT=a; SHARED_EXT=dylib; LIBPFX=lib; TLS_BACKEND=securetransport ;;
-  *) OS=linux; STATIC_EXT=a; SHARED_EXT=so; LIBPFX=lib; TLS_BACKEND=openssl ;;
+  *-windows*) OS=windows; STATIC_EXT=lib; SHARED_EXT=dll;   LIBPFX="";   TLS_BACKEND=schannel ;;
+  *-ios*)     OS=ios;     STATIC_EXT=a;   SHARED_EXT=dylib; LIBPFX=lib;  TLS_BACKEND=securetransport ;;
+  *-osx*)     OS=osx;     STATIC_EXT=a;   SHARED_EXT=dylib; LIBPFX=lib;  TLS_BACKEND=securetransport ;;
+  *-android*) OS=android; STATIC_EXT=a;   SHARED_EXT=so;    LIBPFX=lib;  TLS_BACKEND=openssl ;;
+  *)          OS=linux;   STATIC_EXT=a;   SHARED_EXT=so;    LIBPFX=lib;  TLS_BACKEND=openssl ;;
 esac
 # Shared libraries live in bin/ on Windows; the import .lib stays in lib/.
 case "$OS" in windows) SHAREDDIR="$INSTALLED/$TRIPLET/bin" ;; *) SHAREDDIR="$LIB" ;; esac
@@ -37,9 +39,9 @@ case "$OS" in windows) SHAREDDIR="$INSTALLED/$TRIPLET/bin" ;; *) SHAREDDIR="$LIB
 # Names a shared library links, one per line - the platform's DT_NEEDED analogue.
 needed_libs() {
   case "$OS" in
-    linux) readelf -d "$@" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p' ;;
-    osx)   otool -L "$@" 2>/dev/null | sed -n 's|^\t\([^ ]*\).*|\1|p' | xargs -n1 basename 2>/dev/null ;;
-    *)     return 0 ;;   # no dumpbin guarantee on a bash runner; callers skip instead
+    linux|android) readelf -d "$@" 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p' ;;
+    osx|ios)       otool -L "$@" 2>/dev/null | sed -n 's|^\t\([^ ]*\).*|\1|p' | xargs -n1 basename 2>/dev/null ;;
+    *)             return 0 ;;   # no dumpbin guarantee on a bash runner; callers skip instead
   esac
 }
 
@@ -57,9 +59,17 @@ have_module() {
 }
 
 # Qt libraries are libQt6Core.so / libQt6Core.dylib / Qt6Core.dll (+ Qt6Core.lib).
+# Qt lands as a shared library, a static library, or - on macOS with the framework
+# feature - a Qt6Xxx.framework bundle with the binary inside it.
 have_qt() {
-  [ -f "$LIB/${LIBPFX}Qt6$1.$SHARED_EXT" ] || [ -f "$SHAREDDIR/Qt6$1.$SHARED_EXT" ] \
-    || [ -f "$LIB/Qt6$1.$STATIC_EXT" ]
+  local n
+  for n in "${LIBPFX}Qt6$1.$SHARED_EXT" "Qt6$1.$SHARED_EXT" \
+           "${LIBPFX}Qt6$1.$STATIC_EXT" "Qt6$1.$STATIC_EXT"; do
+    [ -f "$LIB/$n" ] && return 0
+    [ -f "$SHAREDDIR/$n" ] && return 0
+  done
+  [ -f "$LIB/Qt6$1.framework/Qt6$1" ] && return 0
+  return 1
 }
 
 echo "=== verifying $TRIPLET ==="
@@ -78,8 +88,8 @@ done
 # DEFAULT and would be re-exported from whatever shared library links opencv in.
 echo "opencv4 built with hidden visibility (triplet parity):"
 core=$(ls "$LIB"/libopencv_core*.a 2>/dev/null | head -1)
-if [ "$OS" != linux ]; then
-  skip "readelf-based visibility check is Linux-only (Windows has no -fvisibility at all)"
+if [ "$OS" != linux ] && [ "$OS" != android ]; then
+  skip "readelf-based visibility check needs ELF (Windows has no -fvisibility at all)"
 elif [ -z "$core" ]; then
   bad "no libopencv_core archive to inspect"
 else
@@ -110,6 +120,17 @@ done
 echo "known parity gap: Qt xml cannot be disabled, so Qt6Xml is expected:"
 have_qt Xml && ok "Qt6Xml present, as documented" \
   || bad "Qt6Xml absent - upstream may have made FEATURE_xml optional; update the README"
+
+# macOS is the only platform where the framework feature applies: qtbase declares it
+# "osx & !static", so it needs the dynamic linkage arm64-osx gives qtbase. iOS gets
+# static archives instead - see triplets/arm64-ios.cmake.
+if [ "$OS" = osx ]; then
+  echo "macOS framework build:"
+  [ -d "$LIB/Qt6Core.framework" ] && ok "Qt6Core.framework present" \
+    || bad "Qt6Core.framework missing - the framework feature did not take effect"
+elif [ "$OS" = ios ]; then
+  skip "frameworks are unavailable on ios (feature is osx & !static); static archives expected"
+fi
 
 # Since Qt 6.2 the TLS backends are plugins, so the Qt libraries themselves never
 # link the TLS stack - the interesting facts live in the plugin. Each platform is

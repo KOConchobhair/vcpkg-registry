@@ -34,6 +34,11 @@ jobs:
           - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux }
           - { runner: macos-14, triplet: arm64-osx, os: macos }
           - { runner: windows-2022, triplet: x64-windows, os: windows }
+          # Cross targets: host_triplet is the machine doing the building, since
+          # android and ios binaries cannot run on the runner and vcpkg needs host
+          # tools (moc, and the host qtbase behind it) it can execute.
+          - { runner: ubuntu-22.04, triplet: arm64-android, os: linux, host_triplet: x64-linux }
+          - { runner: macos-14, triplet: arm64-ios, os: macos, host_triplet: arm64-osx }
     defaults:
       run:
         # Git Bash on Windows, so tests/run.sh is the single implementation
@@ -71,6 +76,12 @@ jobs:
       # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
       # acquires nasm and perl itself when a port asks for them.
 
+      - name: Point vcpkg at the Android NDK
+        if: contains(matrix.triplet, 'android')
+        # The runner images set ANDROID_NDK_LATEST_HOME; vcpkg's android toolchain
+        # reads ANDROID_NDK_HOME.
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
       # Keyed on everything that affects an ABI hash, so a port or triplet edit
       # invalidates cleanly while restore-keys still seeds from the last run.
       - name: Restore vcpkg caches
@@ -93,6 +104,8 @@ jobs:
           VCPKG_DOWNLOADS: ${{ runner.temp }}/downloads
           VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/cache
           REGISTRY_HEAD: ${{ github.sha }}
+          # Empty for the four native triplets, so run.sh falls back to the target.
+          HOST_TRIPLET: ${{ matrix.host_triplet }}
 
       - name: Installed tree
         if: always()

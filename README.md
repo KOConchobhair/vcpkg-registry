@@ -192,7 +192,7 @@ soname; under `linked` it requires the opposite.
 
 ## Triplets
 
-`triplets/` holds the four overlay triplets, moved here from
+`triplets/` holds the six overlay triplets, four of them moved here from
 `rankone-ffmpeg-jetson/ci/vcpkg/` so the port-specific workarounds in them can be
 retired as the ports absorb them. **Registries serve ports only** — vcpkg has no
 mechanism to distribute triplets — so a consumer still points
@@ -215,7 +215,8 @@ a compiler flag, and `WITH_PTHREADS_PF` has no upstream feature:
 ### Linkage
 
 Static by default. Dynamic for the LGPL set — `qtbase`, `ffmpeg`, `openssl`,
-`numactl` — **on all four triplets**, with the same anchored match in each:
+`numactl` — **on every triplet except `arm64-ios`**, with the same anchored match
+in each:
 
 ```cmake
 set(VCPKG_LIBRARY_LINKAGE static)
@@ -234,6 +235,25 @@ one rule to reason about rather than four.
 Measured on `arm64-linux`: `libQt6Core.so`, `libavcodec.so`, `libssl.so`,
 `libcrypto.so` shared with no static counterpart; `libopencv_core4.a`, `libuv.a`,
 `libamqpcpp.a` static with no shared counterpart.
+
+**`arm64-ios` is the deliberate exception: everything static, LGPL set included.**
+iOS has no practical way to ship and load third-party shared libraries, so the
+relinking path the LGPL expects is forfeited and that obligation moves to whoever
+ships the app. The ROC SDK already works this way on iOS — it is a platform
+constraint rather than a preference — but it is a legal exposure and not merely a
+build setting, so it is stated in `triplets/arm64-ios.cmake` too rather than left
+implicit. Android keeps the rule: an APK ships `.so` files in `lib/<abi>/`, so
+dynamic is both achievable and honest there.
+
+### Frameworks
+
+Enabled on **macOS only**, through qtbase's `framework` feature. That feature is
+declared `supports: "osx & !static"`, so it needs the dynamic linkage `arm64-osx`
+gives qtbase — and it is unavailable on iOS twice over: iOS is not `osx`, and that
+triplet is static. Frameworks and static linking are mutually exclusive here; iOS
+gets static archives, and bundling those into a `.framework` is an SDK packaging
+step rather than something vcpkg does. `verify.sh` asserts `Qt6Core.framework` on
+macOS and skips the check with an explanation on iOS.
 
 `VCPKG_FIXUP_ELF_RPATH` is set on the two Linux triplets, carried over from the
 original. Worth knowing: it only *rewrites* existing `RPATH`/`RUNPATH` entries to
@@ -431,18 +451,24 @@ then on, a change to a port means a new `port-version`.
 
 `.github/workflows/ports.yml` is the gate: on every push and pull request it builds
 `tests/vcpkg.json` on a native runner for **every triplet this registry ships**, and
-runs `tests/verify.sh` on the result. All four images are free for public
+runs `tests/verify.sh` on the result. All runner images used are free for public
 repositories:
 
-| Triplet | Runner |
-| ------- | ------ |
-| `x64-linux` | `ubuntu-22.04` |
-| `arm64-linux` | `ubuntu-22.04-arm` |
-| `arm64-osx` | `macos-14` |
-| `x64-windows` | `windows-2022` |
+| Triplet | Runner | Host triplet |
+| ------- | ------ | ------------ |
+| `x64-linux` | `ubuntu-22.04` | — |
+| `arm64-linux` | `ubuntu-22.04-arm` | — |
+| `arm64-osx` | `macos-14` | — |
+| `x64-windows` | `windows-2022` | — |
+| `arm64-android` | `ubuntu-22.04` | `x64-linux` |
+| `arm64-ios` | `macos-14` | `arm64-osx` |
+
+The last two are cross builds, so the host triplet is the machine doing the
+building — Android and iOS binaries cannot run on the runner, and vcpkg needs host
+tools (moc, and the host qtbase behind it) it can actually execute.
 
 `fail-fast: false`, so one platform breaking still tells you about the others.
-`tests/run.sh` is the single implementation on all four — the workflow runs it under
+`tests/run.sh` is the single implementation on all six — the workflow runs it under
 Git Bash on Windows and converts the Actions-supplied paths with `cygpath`.
 `tests/verify.sh` adapts its file naming and inspection tooling per platform, and
 its central check becomes *"did this platform produce its own TLS backend and not
