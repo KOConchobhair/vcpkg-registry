@@ -44,6 +44,23 @@ export VCPKG_DOWNLOADS="$(npath "${VCPKG_DOWNLOADS:-/downloads}")"
 export VCPKG_DEFAULT_BINARY_CACHE="$(npath "${VCPKG_DEFAULT_BINARY_CACHE:-/cache}")"
 export VCPKG_ROOT="$WORK/vcpkg"
 
+# Use vcpkg's own cmake/ninja, never the host's.
+#
+# The ubuntu-22.04-arm runner ships cmake 3.31.6 at /usr/local/bin and vcpkg picks
+# it up rather than downloading its own 4.4.0. vcpkg at this baseline emits
+# string(JSON ... STRING_ENCODE) from z_vcpkg_spdx.cmake, which needs cmake 4.2+,
+# so any port reaching that path dies with "string sub-command JSON got an invalid
+# mode 'STRING_ENCODE'" - openssl does, which is where CI failed. The x64 image
+# happens to carry a newer cmake, which is why only the arm64 leg broke.
+#
+# The local container has no cmake at all, so vcpkg always downloads its own there
+# and this could not be reproduced locally even with cmake 3.31.6 on PATH - which
+# means something in the runner environment is what tips vcpkg toward system tools.
+# Rather than rely on which of the two switches wins, clear one and set the other:
+# after this, the tool choice does not depend on the host at all.
+unset VCPKG_FORCE_SYSTEM_BINARIES
+export VCPKG_FORCE_DOWNLOADED_BINARIES=1
+
 # Prerequisites come from tests/apt-packages.txt on Linux (installed by
 # tests/Dockerfile locally, or by the workflow), from brew on macOS, and from the
 # preinstalled toolchain on Windows. cmake and ninja are deliberately absent
@@ -134,13 +151,23 @@ localize_registry
 # fail to build if it regressed. So assert it, from resolution alone, in seconds.
 check_gui_flavor() {
   local base gui missing
+  # Surface vcpkg's own error rather than discarding it. An earlier version sent
+  # stderr to /dev/null, so a resolution failure here showed up as "could not
+  # resolve one of the flavours" with no hint why - or, under `set -e`, as a bare
+  # non-zero exit with no output at all.
   qt_features() {
-    "$VCPKG" "${ARGS[@]}" --dry-run ${1:+--x-feature=$1} 2>/dev/null \
-      | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' '
+    local out rc
+    out=$("$VCPKG" "${ARGS[@]}" --dry-run ${1:+--x-feature=$1} 2>&1); rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "  FAIL  resolving the ${1:-headless} flavour failed (exit $rc):" >&2
+      printf '%s\n' "$out" | tail -30 | sed 's/^/        /' >&2
+      return "$rc"
+    fi
+    printf '%s\n' "$out" | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' '
   }
-  base=$(qt_features)
-  gui=$(qt_features gui)
   echo "=== qtbase flavours ==="
+  base=$(qt_features)  || return 1
+  gui=$(qt_features gui) || return 1
   echo "  headless   : ${base}"
   echo "  + gui      : ${gui}"
   if [ -z "$base" ] || [ -z "$gui" ]; then

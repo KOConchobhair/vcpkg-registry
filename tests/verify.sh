@@ -164,9 +164,13 @@ elif [ -n "$plugin" ]; then
     qlib=$(nm -D --undefined-only "$plugin" 2>/dev/null | grep QLibrary)
     [ -n "$qlib" ] && ok "plugin imports QLibrary - the run-time resolver is compiled in" \
                    || bad "plugin does not import QLibrary - OpenSSL would be unreachable"
+    # Informational, not an assertion. Whether the bare library names survive as
+    # standalone strings depends on the compiler's string merging: gcc on aarch64
+    # emits "crypto" on its own, gcc on x86_64 does not, and that difference is
+    # not a defect. The QLibrary import above is the real positive control.
     names=$(strings "$plugin" | grep -xE 'ssl|crypto')
-    [ -n "$names" ] && ok "bare OpenSSL name(s) for QLibrary to resolve: $(echo $names | tr '\n' ' ')" \
-                    || bad "no bare OpenSSL library names in the plugin"
+    [ -n "$names" ] && ok "bare OpenSSL name(s) also visible: $(echo $names | tr '\n' ' ')" \
+                    || skip "bare OpenSSL names not separately visible (compiler string merging)"
   fi
 fi
 
