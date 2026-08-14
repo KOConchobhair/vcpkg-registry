@@ -1,0 +1,16 @@
+{
+  "name": "jetson-nvmpi",
+  "version": "3.10.0",
+  "description": "libnvmpi: FFmpeg hardware encode/decode on Jetson through the L4T Multimedia API",
+  "homepage": "https://github.com/gjrtimmer/jetson-ffmpeg",
+  "license": "LGPL-2.1-or-later",
+  "supports": "linux & arm64",
+  "dependencies": [
+    "jetson-multimedia-api",
+    "libjpeg-turbo",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    }
+  ]
+}

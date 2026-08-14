@@ -1,3 +1,16 @@
 {
-  "default": {}
+  "default": {
+    "ffmpeg": {
+      "baseline": "7.0.2",
+      "port-version": 8
+    },
+    "jetson-multimedia-api": {
+      "baseline": "36.4.0",
+      "port-version": 0
+    },
+    "jetson-nvmpi": {
+      "baseline": "3.10.0",
+      "port-version": 0
+    }
+  }
 }

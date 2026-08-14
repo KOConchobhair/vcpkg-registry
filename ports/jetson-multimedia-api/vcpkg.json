@@ -1,0 +1,8 @@
+{
+  "name": "jetson-multimedia-api",
+  "version": "36.4.0",
+  "description": "NVIDIA Jetson Linux Multimedia API headers and helper class sources (L4T 36.4, JetPack 6)",
+  "homepage": "https://docs.nvidia.com/jetson/archives/r36.4/ApiReference/",
+  "license": null,
+  "supports": "linux & arm64"
+}
