@@ -24,6 +24,13 @@ endif()
 
 if(PORT MATCHES "opencv")
     list(APPEND ADDITIONAL_BUILD_FLAGS "-DWITH_PTHREADS_PF=OFF")
+    # The port hard-codes -DBUILD_WITH_DEBUG_INFO=ON, which puts DWARF into the
+    # release static libs: 79 MB of the 116 MB of libopencv_*.a on arm64-linux, 68%
+    # of their size, with libopencv_dnn4.a alone going 59.7 -> 17.4 MB. Nothing else
+    # in the tree carries debug info, so this is the one real size lever we have.
+    # ADDITIONAL_BUILD_FLAGS is expanded after the port's own OPTIONS, so the later
+    # -D wins.
+    list(APPEND ADDITIONAL_BUILD_FLAGS "-DBUILD_WITH_DEBUG_INFO=OFF")
 endif()
 
 set(VCPKG_BUILD_TYPE release)
