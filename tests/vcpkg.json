@@ -23,7 +23,10 @@
   "name": "test",
   "builtin-baseline": "3c5d90a305ff00ca841f085a74a7ce74ee777dee",
   "dependencies": [
-    "amqpcpp",
+    {
+      "name": "amqpcpp",
+      "platform": "!ios & !android"
+    },
     {
       "name": "ffmpeg",
       "features": [
@@ -33,7 +36,10 @@
         "openssl"
       ]
     },
-    "libuv",
+    {
+      "name": "libuv",
+      "platform": "!ios & !android"
+    },
     {
       "name": "opencv4",
       "default-features": false,

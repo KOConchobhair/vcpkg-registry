@@ -91,6 +91,20 @@ if the VM runs short of memory during the qtbase or opencv link steps.
 
 ## Layout
 
+### Scope per platform
+
+`qtbase` (headless) and `opencv4` are the required pair everywhere, and they are the
+only unconditional ones. `amqpcpp` and `libuv` are guarded `!ios & !android` — they
+are not part of the mobile SDK, and there is nothing to learn from building them
+there. `ffmpeg` is left unguarded on purpose: whether it cross-builds for iOS and
+Android is an open question worth answering, and if the answer is no, adding
+`"platform": "!ios & !android"` to that entry is the whole fix.
+
+Be aware of the ordering consequence: vcpkg installs the whole plan in one pass, so
+an ffmpeg failure on a mobile leg aborts before `verify.sh` runs and costs the
+signal on qtbase and opencv4 for that leg. The `Installed tree` step runs
+`if: always()`, so the log still shows how far it got.
+
 - `vcpkg.json` — **the consumer manifest**, and the end state for
   `rankone-ffmpeg-jetson/ci/vcpkg.json`: rankone's real dependency set, plus
   `builtin-baseline` and an embedded `vcpkg-configuration` naming this registry
