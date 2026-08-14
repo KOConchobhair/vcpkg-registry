@@ -172,6 +172,11 @@ list(APPEND FEATURE_CORE_OPTIONS -DFEATURE_pkg_config:BOOL=ON)
     "openssl"             FEATURE_openssl
     "brotli"              FEATURE_brotli
     "securetransport"     FEATURE_securetransport
+    # ROC: begin - Qt has a Schannel TLS backend on Windows (qt_feature("schannel")
+    # in src/network/configure.cmake, CONDITION WIN32) that the port never exposed.
+    # Without it the only Windows option is linking OpenSSL.
+    "schannel"            FEATURE_schannel
+    # ROC: end
     "dnslookup"           FEATURE_dnslookup
     #"brotli"              CMAKE_REQUIRE_FIND_PACKAGE_WrapBrotli
     #"openssl"             CMAKE_REQUIRE_FIND_PACKAGE_WrapOpenSSL
@@ -181,7 +186,14 @@ list(APPEND FEATURE_CORE_OPTIONS -DFEATURE_pkg_config:BOOL=ON)
     "dnslookup"           CMAKE_DISABLE_FIND_PACKAGE_WrapResolve
     )
 
-if("openssl" IN_LIST FEATURES)
+# ROC: begin - openssl-runtime resolves libssl/libcrypto with dlopen instead of
+# linking them, so the binary is not bound to one OpenSSL soname. Mirrors the
+# linked/runtime split INPUT_dbus already uses above. The openssl port stays a
+# dependency because Qt still needs the headers to compile the backend.
+if("openssl-runtime" IN_LIST FEATURES)
+    list(APPEND FEATURE_NET_OPTIONS -DINPUT_openssl=runtime)
+elseif("openssl" IN_LIST FEATURES)
+# ROC: end
     list(APPEND FEATURE_NET_OPTIONS -DINPUT_openssl=linked)
 else()
     list(APPEND FEATURE_NET_OPTIONS -DINPUT_openssl=no)

@@ -108,6 +108,10 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
  "dshow"      WITH_DSHOW
  "eigen"      WITH_EIGEN
  "eigen"      VCPKG_LOCK_FIND_PACKAGE_Eigen3
+ # ROC: begin - make the remaining always-on modules selectable
+ "features2d" BUILD_opencv_features2d
+ "flann"      BUILD_opencv_flann
+ # ROC: end
  "ffmpeg"     WITH_FFMPEG
  "freetype"   WITH_FREETYPE
  "gapi"       BUILD_opencv_gapi
@@ -126,6 +130,12 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
  "jpegxl"     WITH_JPEGXL
  "msmf"       WITH_MSMF
  "nonfree"    OPENCV_ENABLE_NONFREE
+ # ROC: begin - make the remaining always-on modules selectable
+ "objdetect"  BUILD_opencv_objdetect
+ "photo"      BUILD_opencv_photo
+ "stitching"  BUILD_opencv_stitching
+ "video"      BUILD_opencv_video
+ # ROC: end
  "thread"     OPENCV_ENABLE_THREAD_SUPPORT
  "opencl"     WITH_OPENCL
  "openvino"   WITH_OPENVINO
