@@ -1,0 +1,111 @@
+name: ports
+
+# Builds tests/vcpkg.json - the consumer manifest - on every triplet this registry
+# ships a triplet file for, each on a native runner. All four runner images are
+# free for public repositories.
+#
+# consumer mode resolves through versions/ and the manifest's own
+# vcpkg-configuration rather than --overlay-ports, so this is the exact path a
+# consumer of this registry takes. Resolution happens before any compiling, so a
+# broken feature graph or an unrecorded version still fails within a minute or
+# two; there is no need for a separate resolve-only job.
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # The upstream commit the ports were vendored from, and the baseline
+  # tests/vcpkg.json pins. Ports outside this registry come from here.
+  VCPKG_BASELINE: 3c5d90a305ff00ca841f085a74a7ce74ee777dee
+
+jobs:
+  build:
+    name: ${{ matrix.triplet }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, triplet: x64-linux, os: linux }
+          - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux }
+          - { runner: macos-14, triplet: arm64-osx, os: macos }
+          - { runner: windows-2022, triplet: x64-windows, os: windows }
+    defaults:
+      run:
+        # Git Bash on Windows, so tests/run.sh is the single implementation
+        # everywhere. It converts the Actions-supplied paths with cygpath.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # consumer mode clones this repo as a git registry at github.sha.
+          fetch-depth: 0
+
+      - name: Reclaim disk space
+        if: matrix.os == 'linux'
+        # qtbase and opencv4 buildtrees are large. The preinstalled toolchains are
+        # not used here, and dropping them roughly doubles the free space.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: Install prerequisites (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update -qq
+          grep -v '^[[:space:]]*#' tests/apt-packages.txt | grep -v '^[[:space:]]*$' \
+            | xargs sudo apt-get install -y -qq --no-install-recommends
+
+      - name: Install prerequisites (macOS)
+        if: matrix.os == 'macos'
+        # autoconf-archive is what libb2 needs; nasm is for openh264/ffmpeg asm.
+        # No cmake or ninja - vcpkg fetches its own, same as everywhere else.
+        run: brew install autoconf autoconf-archive automake libtool nasm pkgconf
+
+      # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
+      # acquires nasm and perl itself when a port asks for them.
+
+      # Keyed on everything that affects an ABI hash, so a port or triplet edit
+      # invalidates cleanly while restore-keys still seeds from the last run.
+      - name: Restore vcpkg caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/cache
+            ${{ runner.temp }}/downloads
+          key: vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-${{ hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-
+            vcpkg-${{ matrix.triplet }}-
+
+      # Runs tests/verify.sh on success; that is where the real assertions live.
+      - name: Build and verify
+        run: ./tests/run.sh ${{ matrix.triplet }} consumer
+        env:
+          REGISTRY: ${{ github.workspace }}
+          WORK: ${{ runner.temp }}/work
+          VCPKG_DOWNLOADS: ${{ runner.temp }}/downloads
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/cache
+          REGISTRY_HEAD: ${{ github.sha }}
+
+      - name: Installed tree
+        if: always()
+        run: |
+          d="${RUNNER_TEMP}/work/installed/${{ matrix.triplet }}"
+          ls -la "$d/lib" 2>/dev/null || true
+          ls -la "$d/bin" 2>/dev/null || true
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.triplet }}
+          path: ${{ runner.temp }}/work/buildtrees/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore

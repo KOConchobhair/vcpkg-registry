@@ -1,0 +1,182 @@
+#!/bin/bash
+# Installs tests/vcpkg.json against this registry and checks the result.
+#
+# One implementation, two environments. Paths come from the environment so the
+# same script serves the local docker harness and the GitHub Actions runners:
+#
+#   REGISTRY  this registry checkout                     (default /registry)
+#   WORK      vcpkg root, buildtrees, install tree       (default /work)
+#   VCPKG_DOWNLOADS               shared source tarballs (default /downloads)
+#   VCPKG_DEFAULT_BINARY_CACHE    binary cache           (default /cache)
+#   VCPKG_BASELINE                upstream commit to bootstrap the vcpkg tool at
+#   REGISTRY_HEAD                 commit the registry modes resolve against
+#
+# Locally: driven by ./tests/build.sh, which supplies container mounts.
+# In CI: called directly with runner paths, see .github/workflows/ports.yml.
+#
+# Every mode is vcpkg manifest mode - an install driven by tests/vcpkg.json. There
+# is no classic-mode path here and none is wanted.
+#
+#   consumer   build tests/vcpkg.json through the registry, then verify. The test.
+#   resolve    the same, resolution only - no compiling
+#   overlay    the same, but --overlay-ports for the working tree. Dev loop only:
+#              it bypasses versions/, so it proves nothing about the registry.
+#   verify     re-check an existing install tree
+#
+# consumer and resolve read the *committed* tree, so commit before running them.
+set -euo pipefail
+
+TRIPLET="${1:?triplet required}"
+MODE="${2:-consumer}"
+
+# Windows runs this under Git Bash, where the paths handed in by Actions are
+# Windows-native (D:\a\_temp). cygpath -m converts them to the mixed form
+# (D:/a/_temp) that both bash and vcpkg.exe accept.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1; npath() { cygpath -m "$1"; } ;;
+  *)                    IS_WINDOWS=0; npath() { printf '%s' "$1"; } ;;
+esac
+PY_BIN=python3; command -v python3 >/dev/null 2>&1 || PY_BIN=python
+
+REGISTRY="$(npath "${REGISTRY:-/registry}")"
+WORK="$(npath "${WORK:-/work}")"
+export VCPKG_DOWNLOADS="$(npath "${VCPKG_DOWNLOADS:-/downloads}")"
+export VCPKG_DEFAULT_BINARY_CACHE="$(npath "${VCPKG_DEFAULT_BINARY_CACHE:-/cache}")"
+export VCPKG_ROOT="$WORK/vcpkg"
+
+# Prerequisites come from tests/apt-packages.txt on Linux (installed by
+# tests/Dockerfile locally, or by the workflow), from brew on macOS, and from the
+# preinstalled toolchain on Windows. cmake and ninja are deliberately absent
+# everywhere - vcpkg fetches its own; see apt-packages.txt for why.
+[ "$IS_WINDOWS" = 1 ] || cc --version | head -1
+
+mkdir -p "$WORK" "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
+
+# The checkout may be owned by another user (bind mount, or a CI cache restore),
+# and the registry modes clone from it.
+git config --global --add safe.directory "$REGISTRY" 2>/dev/null || true
+
+# Every mode redirects the registry (see localize_registry), so this must always
+# have a value - not only in the modes that resolve against it. Callers that care
+# which commit is tested pass it in; anyone else gets HEAD of the checkout. Under
+# `set -u` the fallback is the difference between working and an unbound variable.
+REGISTRY_HEAD="${REGISTRY_HEAD:-$(git -C "$REGISTRY" rev-parse HEAD)}"
+
+if [ "$MODE" = verify ]; then
+  exec bash "$REGISTRY/tests/verify.sh" "$TRIPLET" "$WORK/installed"
+fi
+
+if [ "$IS_WINDOWS" = 1 ]; then VCPKG="$VCPKG_ROOT/vcpkg.exe"; else VCPKG="$VCPKG_ROOT/vcpkg"; fi
+if [ ! -x "$VCPKG" ]; then
+  echo "=== bootstrapping vcpkg @ ${VCPKG_BASELINE} ==="
+  git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+  git -C "$VCPKG_ROOT" checkout -q "${VCPKG_BASELINE}"
+  if [ "$IS_WINDOWS" = 1 ]; then
+    "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+  else
+    "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+  fi
+fi
+
+# The manifest's overlay-triplets is "../triplets", resolved relative to the
+# manifest, so the manifest cannot simply be copied somewhere flat. Stage tests/
+# and triplets/ together and keep their relative layout intact.
+STAGE="$WORK/consumer"
+rm -rf "$STAGE" && mkdir -p "$STAGE"
+cp -r "$REGISTRY/tests" "$STAGE/tests"
+cp -r "$REGISTRY/triplets" "$STAGE/triplets"
+MANIFEST="$STAGE/tests/vcpkg.json"
+
+ARGS=(
+  install
+  --x-manifest-root="$STAGE/tests"
+  --triplet="$TRIPLET"
+  --host-triplet="$TRIPLET"
+  --x-install-root="$WORK/installed"
+  --x-buildtrees-root="$WORK/buildtrees"
+  --x-packages-root="$WORK/packages"
+  --clean-buildtrees-after-build
+)
+
+# The committed manifest names this registry by its public URL and a pinned
+# baseline - that is the artifact a consumer copies. To test the commit in front
+# of us rather than whatever was last pushed, point it at the local checkout and
+# at REGISTRY_HEAD. Nothing else in the file is touched. Set USE_MANIFEST_AS_IS=1
+# to run it exactly as committed, which only works once that baseline is pushed.
+localize_registry() {
+  if [ "${USE_MANIFEST_AS_IS:-0}" = 1 ]; then
+    echo "=== manifest used as committed (public URL, pinned baseline) ==="
+    return
+  fi
+  echo "=== registry redirected to local checkout @ ${REGISTRY_HEAD} ==="
+  "$PY_BIN" - "$MANIFEST" "$REGISTRY" "$REGISTRY_HEAD" <<'PY'
+import json, sys
+path, repo, head = sys.argv[1], sys.argv[2], sys.argv[3]
+m = json.load(open(path))
+regs = m['vcpkg-configuration']['registries']
+roc = [r for r in regs if 'vcpkg-registry' in r.get('repository', '')]
+assert len(roc) == 1, f"expected exactly one roc registry, found {len(roc)}"
+roc[0]['repository'] = repo
+roc[0]['baseline'] = head
+json.dump(m, open(path, 'w'), indent=2)
+PY
+}
+
+# Always redirected, in every mode. overlay mode supersedes the registry with
+# --overlay-ports and would not consult it, but vcpkg still reads the
+# configuration, and the committed baseline may not be pushed yet.
+localize_registry
+
+# The manifest is meant to have two flavours: headless by default, and headless
+# PLUS Qt GUI when the gui feature is on. vcpkg unions feature requests across the
+# graph, so the gui edge lists only what it adds - but that additivity is exactly
+# the kind of thing a later "tidy-up" breaks silently, and neither flavour would
+# fail to build if it regressed. So assert it, from resolution alone, in seconds.
+check_gui_flavor() {
+  local base gui missing
+  qt_features() {
+    "$VCPKG" "${ARGS[@]}" --dry-run ${1:+--x-feature=$1} 2>/dev/null \
+      | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' '
+  }
+  base=$(qt_features)
+  gui=$(qt_features gui)
+  echo "=== qtbase flavours ==="
+  echo "  headless   : ${base}"
+  echo "  + gui      : ${gui}"
+  if [ -z "$base" ] || [ -z "$gui" ]; then
+    echo "  FAIL  could not resolve one of the flavours" >&2; return 1
+  fi
+  # gui must be a superset of headless - it adds, it does not replace.
+  missing=""
+  for f in $base; do case " $gui " in *" $f "*) ;; *) missing="$missing $f" ;; esac; done
+  if [ -n "$missing" ]; then
+    echo "  FAIL  the gui flavour dropped:$missing" >&2; return 1
+  fi
+  for f in gui widgets; do
+    case " $gui " in *" $f "*) ;; *) echo "  FAIL  gui flavour is missing $f" >&2; return 1 ;; esac
+  done
+  for f in gui widgets; do
+    case " $base " in *" $f "*) echo "  FAIL  $f present without the gui feature" >&2; return 1 ;; esac
+  done
+  echo "  ok    gui is additive: headless set intact, plus gui and widgets"
+}
+
+case "$MODE" in
+  resolve)  check_gui_flavor; ARGS+=(--dry-run) ;;
+  consumer) check_gui_flavor ;;
+  overlay)  ARGS+=(--overlay-ports="$REGISTRY/ports") ;;
+  *)
+    echo "mode must be consumer, resolve, overlay or verify" >&2
+    exit 2
+    ;;
+esac
+
+echo "=== vcpkg ${MODE} ${TRIPLET} ==="
+"$VCPKG" "${ARGS[@]}"
+
+case "$MODE" in
+  consumer|overlay)
+    echo
+    bash "$REGISTRY/tests/verify.sh" "$TRIPLET" "$WORK/installed"
+    ;;
+esac

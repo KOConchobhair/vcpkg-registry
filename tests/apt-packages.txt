@@ -1,0 +1,27 @@
+# System packages the registry's ports need on Ubuntu 22.04.
+# Shared by tests/Dockerfile and the GitHub Actions workflow so the two
+# environments cannot drift.
+#
+# No cmake or ninja on purpose: Ubuntu 22.04 ships cmake 3.22 and vcpkg at this
+# baseline needs 4.2+ for string(JSON ... STRING_ENCODE). vcpkg carries cmake
+# 4.4.0 for linux-aarch64 and linux-x86_64 both, so let it fetch its own and do
+# not set VCPKG_FORCE_SYSTEM_BINARIES.
+build-essential
+git
+curl
+ca-certificates
+zip
+unzip
+tar
+pkg-config
+python3
+python3-jinja2
+autoconf
+autoconf-archive
+automake
+libtool
+m4
+bison
+flex
+linux-libc-dev
+nasm

@@ -1,0 +1,152 @@
+{
+  "$comment": "Reference consumer manifest for this registry; see the top-level README for the reasoning behind every line of it.",
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "vcpkg-configuration": {
+    "registries": [
+      {
+        "kind": "git",
+        "baseline": "ea57d219979c3e549840f824d68bae524d6a670c",
+        "repository": "https://github.com/KOConchobhair/vcpkg-registry",
+        "packages": [
+          "ffmpeg",
+          "jetson-multimedia-api",
+          "jetson-nvmpi",
+          "opencv4",
+          "qtbase"
+        ]
+      }
+    ],
+    "overlay-triplets": [
+      "../triplets"
+    ]
+  },
+  "name": "test",
+  "builtin-baseline": "3c5d90a305ff00ca841f085a74a7ce74ee777dee",
+  "dependencies": [
+    "amqpcpp",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "ffmpeg",
+        "ffprobe",
+        "openh264",
+        "openssl"
+      ]
+    },
+    "libuv",
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": [
+        "dnn",
+        "features2d",
+        "fs",
+        "intrinsics",
+        "jpeg",
+        "openexr",
+        "openjpeg",
+        "png",
+        "thread",
+        "tiff",
+        "webp"
+      ]
+    },
+    "openssl",
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": [
+        "async-io",
+        "concurrent",
+        "dnslookup",
+        {
+          "name": "ioring",
+          "platform": "linux | windows"
+        },
+        "network",
+        {
+          "name": "openssl",
+          "platform": "linux"
+        },
+        "pcre2",
+        {
+          "name": "schannel",
+          "platform": "windows"
+        },
+        {
+          "name": "securetransport",
+          "platform": "osx"
+        }
+      ]
+    }
+  ],
+  "features": {
+    "cuda": {
+      "description": "Enable CUDA/cuDNN support",
+      "dependencies": [
+        {
+          "name": "cudnn",
+          "platform": "linux"
+        },
+        {
+          "name": "ffmpeg",
+          "features": [
+            "nvcodec"
+          ],
+          "platform": "linux | windows"
+        }
+      ]
+    },
+    "gui": {
+      "description": "Add Qt GUI on top of the headless set above - gui, widgets and Sql with the SQLite driver. Off by default.",
+      "dependencies": [
+        {
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "gui",
+            "sql",
+            "sql-sqlite",
+            "widgets"
+          ]
+        }
+      ]
+    },
+    "jetson": {
+      "description": "Enable Jetson hardware video codecs (*_nvmpi) via this registry's jetson ports",
+      "dependencies": [
+        {
+          "name": "ffmpeg",
+          "features": [
+            "nvmpi"
+          ],
+          "platform": "linux & arm64"
+        }
+      ]
+    },
+    "numa": {
+      "description": "Enable NUMA-topology-aware search via libnuma",
+      "dependencies": [
+        {
+          "name": "numactl",
+          "platform": "linux"
+        }
+      ]
+    },
+    "prometheus": {
+      "description": "Enable Prometheus metrics via prometheus-cpp",
+      "dependencies": [
+        {
+          "name": "prometheus-cpp",
+          "default-features": false
+        }
+      ]
+    }
+  },
+  "overrides": [
+    {
+      "name": "protobuf",
+      "version": "3.19.4"
+    }
+  ]
+}
