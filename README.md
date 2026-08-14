@@ -121,9 +121,13 @@ Qt 6 has three, one per platform, and the port now exposes all three:
 
 | Platform | Feature | Effect |
 | -------- | ------- | ------ |
-| Linux, etc. | `openssl` | `INPUT_openssl=linked` — links libssl/libcrypto |
+| Linux | `openssl` + **`openssl-runtime`** | `INPUT_openssl=runtime` — dlopens libssl/libcrypto, links neither |
 | macOS, iOS | `securetransport` | Apple's native stack, no OpenSSL |
 | Windows | **`schannel`** | Windows' native stack, no OpenSSL |
+
+Each platform gets its native backend, and on Linux the OpenSSL backend is resolved
+at run time rather than linked — which is what `ci/build_qt6.sh` line 19 does with
+`-openssl-runtime`.
 
 `schannel` is new. Qt has always had the backend —
 `qt_feature("schannel" ... CONDITION WIN32)` in `src/network/configure.cmake` —
@@ -160,12 +164,31 @@ individual feature, not just on the dependency as a whole:
 
 One entry, three platforms, no port-side defaults needed.
 
-`openssl-runtime` is a fourth, orthogonal option: it sets `INPUT_openssl=runtime`
-so Qt resolves libssl/libcrypto through `QLibrary` at run time instead of linking
-them. It is what `ci/build_qt6.sh` passes (`-openssl-runtime`), and it is the only
-configuration where nothing shipped is bound to a specific OpenSSL soname —
-under `linked`, `libQt6Network.so` itself carries `DT_NEEDED: libcrypto.so.3`.
-Nothing selects it by default; it is there when a redistributable build needs it.
+### Why `openssl-runtime` and not plain `openssl` on Linux
+
+`openssl-runtime` is orthogonal to the three backends above: it does not choose a
+different backend, it changes how the OpenSSL one is *bound*. Setting
+`INPUT_openssl=runtime` makes Qt resolve libssl/libcrypto through `QLibrary` at run
+time instead of linking them, and it is what `ci/build_qt6.sh` passes.
+
+For a redistributable SDK the difference is not cosmetic. Measured on `arm64-linux`:
+
+| | `openssl` alone (linked) | with `openssl-runtime` |
+| --- | --- | --- |
+| TLS plugin | links `libssl.so.3`, `libcrypto.so.3` | links neither |
+| `libQt6Network.so` | `DT_NEEDED: libcrypto.so.3` | nothing |
+| Target has no OpenSSL, or a different soname | the library **fails to load** | loads; TLS unavailable |
+| Distro portability | bound to one soname | Qt tries several at run time |
+
+That last row is the reason to prefer it: the SDK keeps working across targets with
+different OpenSSL versions, degrading to "no TLS" instead of refusing to load. The
+`openssl` feature stays selected alongside it — Qt still needs the headers to
+compile the backend, and `openssl-runtime` depends on it for that reason.
+
+`verify.sh` reads which mode the manifest selected and asserts accordingly, so it
+stays a real check either way: under `runtime` it requires the plugin to link
+neither library, to import `QLibrary`, and no Qt library to be bound to an OpenSSL
+soname; under `linked` it requires the opposite.
 
 ## Triplets
 
@@ -230,7 +253,7 @@ hand. What follows is the full accounting, including what does *not* match.
 | -------------- | ---- |
 | `-no-gui -no-widgets -no-opengl -no-dbus -no-harfbuzz -no-freetype -no-icu -no-sql-sqlite -no-feature-sql -no-feature-testlib` | `"default-features": false`, on every edge |
 | `-ssl` | `openssl` feature — linked, which is what is used here |
-| `-openssl-runtime` | the **`openssl-runtime`** feature; available, not selected |
+| `-openssl-runtime` | the **`openssl-runtime`** feature, selected on Linux |
 | `-securetransport` (macOS) | `securetransport` feature |
 | `-schannel` (Windows) | the **`schannel`** feature, new here |
 | `-release`, `-shared`, `-no-framework` | triplet: `VCPKG_BUILD_TYPE release`, `VCPKG_LIBRARY_LINKAGE dynamic` for `qtbase` |
@@ -503,9 +526,10 @@ packages including `ffmpeg`, `ffprobe`, `amqpcpp` and `libuv` — and
 - `qtbase 6.11.1#2` has `Core`, `Network`, `Concurrent` and none of `Gui`,
   `Widgets`, `Sql`, `Test`, `DBus`, `OpenGL`
 - the TLS backend is `qopensslbackend` and no other platform's backend leaked in;
-  it links `libssl.so.3`/`libcrypto.so.3`, i.e. `openssl` in linked mode as
-  selected. `verify.sh` reads the mode out of `tests/vcpkg.json`, so it asserts the
-  opposite if `openssl-runtime` is chosen instead
+  it links neither `libssl` nor `libcrypto` and imports `QLibrary`, and no Qt
+  library is bound to an OpenSSL soname — `openssl-runtime` took effect, matching
+  `ci/build_qt6.sh`. `verify.sh` reads the mode out of `tests/vcpkg.json`, so it
+  asserts the opposite if plain linked `openssl` is selected instead
 - no Qt library links ICU
 - linkage split as intended: `libQt6Core.so`, `libavcodec.so`, `libssl.so`,
   `libcrypto.so` shared with no static counterpart; `libopencv_core4.a`, `libuv.a`,

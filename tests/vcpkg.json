@@ -68,6 +68,10 @@
           "name": "openssl",
           "platform": "linux"
         },
+        {
+          "name": "openssl-runtime",
+          "platform": "linux"
+        },
         "pcre2",
         {
           "name": "schannel",
