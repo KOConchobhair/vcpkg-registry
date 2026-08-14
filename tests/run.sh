@@ -92,7 +92,15 @@ fi
 if [ "$IS_WINDOWS" = 1 ]; then VCPKG="$VCPKG_ROOT/vcpkg.exe"; else VCPKG="$VCPKG_ROOT/vcpkg"; fi
 if [ ! -x "$VCPKG" ]; then
   echo "=== bootstrapping vcpkg @ ${VCPKG_BASELINE} ==="
-  git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+  # Deliberately NOT a blobless clone. builtin-baseline makes vcpkg check out port
+  # trees straight out of this repository, including historical ones - protobuf
+  # 3.19.4 is from 2022 - and under --filter=blob:none every one of those checkouts
+  # becomes an on-demand fetch from the promisor remote. That is slow everywhere and
+  # it broke x64-windows outright: "could not fetch ... from promisor remote /
+  # Could not resolve host: github.com", after vcpkg had already downloaded its own
+  # PortableGit. The Linux legs made the same fetches and merely got away with it.
+  # A complete clone costs more up front and needs no network afterwards.
+  git clone --no-checkout https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
   git -C "$VCPKG_ROOT" checkout -q "${VCPKG_BASELINE}"
   if [ "$IS_WINDOWS" = 1 ]; then
     "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
@@ -169,7 +177,16 @@ check_gui_flavor() {
       printf '%s\n' "$out" | tail -30 | sed 's/^/        /' >&2
       return "$rc"
     fi
-    printf '%s\n' "$out" | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' '
+    local parsed
+    parsed=$(printf '%s\n' "$out" | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' ')
+    if [ -z "$parsed" ]; then
+      # Exited 0 but the plan had no qtbase line. Dump what it did say - guessing
+      # from an empty feature list is what made the macOS failure undiagnosable.
+      echo "  FAIL  resolved the ${1:-headless} flavour but found no qtbase line in the plan:" >&2
+      printf '%s\n' "$out" | tail -40 | sed 's/^/        /' >&2
+      return 1
+    fi
+    printf '%s\n' "$parsed"
   }
   echo "=== qtbase flavours ==="
   base=$(qt_features)  || return 1
