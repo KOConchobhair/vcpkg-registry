@@ -245,6 +245,33 @@ build setting, so it is stated in `triplets/arm64-ios.cmake` too rather than lef
 implicit. Android keeps the rule: an APK ships `.so` files in `lib/<abi>/`, so
 dynamic is both achievable and honest there.
 
+### Headless Qt is not achievable on macOS
+
+Everywhere else, `"default-features": false` plus an explicit feature list gets a
+Qt with no GUI. macOS is the exception, and it is upstream's doing rather than a
+configuration mistake: the `qtbase` port **self-depends on `cups`** there —
+
+```json
+{ "name": "qtbase", "default-features": false,
+  "features": ["cups", "thread"], "platform": "osx" }
+```
+
+— and `cups` depends on `widgets`, which depends on `gui`. So `Qt6Gui`,
+`Qt6Widgets` and `Qt6OpenGL` are built on macOS no matter what the consumer asks
+for. Measured on `arm64-osx`, the resolved set is
+`[async-io, concurrent, core, cups, dnslookup, doubleconversion, framework, future,
+gui, network, opengl, pcre2, securetransport, thread, widgets]`.
+
+The other platforms are unaffected — the port's other self-dependencies are
+`["concurrent", "thread"]` on android and `["pcre2"]` on windows-static, neither of
+which reaches `gui`. So headless Qt works on Linux, Windows, Android and iOS, which
+covers every target where it was actually required.
+
+`verify.sh` asserts those three as *expected present* on macOS rather than skipping
+them, so an upstream change to that self-dependency surfaces as a test result. The
+gui-flavour additivity check skips its "gui absent by default" half on macOS for the
+same reason.
+
 ### Frameworks
 
 Enabled on **macOS only**, through qtbase's `framework` feature. That feature is

@@ -76,11 +76,29 @@ jobs:
       # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
       # acquires nasm and perl itself when a port asks for them.
 
-      - name: Point vcpkg at the Android NDK
+      - name: Point vcpkg at a usable Android NDK
         if: contains(matrix.triplet, 'android')
-        # The runner images set ANDROID_NDK_LATEST_HOME; vcpkg's android toolchain
-        # reads ANDROID_NDK_HOME.
-        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+        # vcpkg's toolchain hard-requires <ndk>/build/cmake/android.toolchain.cmake
+        # and fails with "Could not find android ndk" without it. The runner's
+        # ANDROID_NDK_LATEST_HOME is r29, which no longer ships that file, so pick
+        # the newest installed NDK that actually has it rather than trusting
+        # "latest".
+        run: |
+          pick=""
+          for d in $(ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null | sort -V -r); do
+            if [ -f "$d/build/cmake/android.toolchain.cmake" ]; then pick="$d"; break; fi
+          done
+          if [ -z "$pick" ] && [ -n "${ANDROID_NDK_HOME:-}" ] \
+             && [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
+            pick="$ANDROID_NDK_HOME"
+          fi
+          if [ -z "$pick" ]; then
+            echo "No installed NDK provides build/cmake/android.toolchain.cmake. Available:"
+            ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null || echo "  (none)"
+            exit 1
+          fi
+          echo "Using NDK: $pick"
+          echo "ANDROID_NDK_HOME=$pick" >> "$GITHUB_ENV"
 
       # Keyed on everything that affects an ABI hash, so a port or triplet edit
       # invalidates cleanly while restore-keys still seeds from the last run.

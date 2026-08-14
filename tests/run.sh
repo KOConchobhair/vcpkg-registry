@@ -177,8 +177,17 @@ check_gui_flavor() {
       printf '%s\n' "$out" | tail -30 | sed 's/^/        /' >&2
       return "$rc"
     fi
+    # Parsed with python3, not sed: BSD sed (macOS) has no \? operator, so the
+    # previous expression matched nothing there and both Apple legs failed as
+    # "found no qtbase line" while the plan plainly contained one.
     local parsed
-    parsed=$(printf '%s\n' "$out" | sed -n 's/^ *\*\? *qtbase\[\([^]]*\)\].*/\1/p' | head -1 | tr ',' ' ')
+    parsed=$(printf '%s\n' "$out" | "$PY_BIN" -c '
+import re,sys
+for line in sys.stdin:
+    m = re.match(r"\s*\*?\s*qtbase\[([^]]*)\]", line)
+    if m:
+        print(m.group(1).replace(",", " ")); break
+')
     if [ -z "$parsed" ]; then
       # Exited 0 but the plan had no qtbase line. Dump what it did say - guessing
       # from an empty feature list is what made the macOS failure undiagnosable.
@@ -205,9 +214,18 @@ check_gui_flavor() {
   for f in gui widgets; do
     case " $gui " in *" $f "*) ;; *) echo "  FAIL  gui flavour is missing $f" >&2; return 1 ;; esac
   done
-  for f in gui widgets; do
-    case " $base " in *" $f "*) echo "  FAIL  $f present without the gui feature" >&2; return 1 ;; esac
-  done
+  # Skipped on macOS: the qtbase port self-depends on cups there
+  # ("platform": "osx"), and cups -> widgets -> gui, so gui and widgets are in the
+  # base flavour whether or not anyone asked. Headless Qt is not achievable on
+  # macOS with this port; it is on linux, android, ios and windows.
+  case "$TRIPLET" in
+    *-osx*) echo "  skip  gui/widgets are unavoidable on macOS (port self-depends on cups)" ;;
+    *)
+      for f in gui widgets; do
+        case " $base " in *" $f "*) echo "  FAIL  $f present without the gui feature" >&2; return 1 ;; esac
+      done
+      ;;
+  esac
   echo "  ok    gui is additive: headless set intact, plus gui and widgets"
 }
 
