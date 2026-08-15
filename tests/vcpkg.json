@@ -59,10 +59,13 @@
     },
     "openssl",
     {
-      "$comment": "Host qtbase (moc) on cross builds. Without this the host package gets qtbase's full upstream defaults - icu, libpq, the X11 stack - because the target entry's default-features:false does not apply to it.",
+      "$comment": "Host qtbase (moc and the other build tools) on cross builds. default-features:false keeps the host off qtbase's full desktop default set - icu, libpq, the X11 stack - which the target entry's flag does not reach. thread is not optional though: Qt gates process on it (CONDITION QT_FEATURE_thread on UNIX), process gates the wasmdeployqt tool, and the target demands every tool it builds from the host package. Without it the android build dies with 'Failed to find the host tool Qt6::wasmdeployqt'.",
       "name": "qtbase",
       "host": true,
-      "default-features": false
+      "default-features": false,
+      "features": [
+        "thread"
+      ]
     },
     {
       "name": "qtbase",
@@ -70,7 +73,10 @@
       "features": [
         "async-io",
         "concurrent",
-        "dnslookup",
+        {
+          "name": "dnslookup",
+          "platform": "!ios"
+        },
         {
           "name": "framework",
           "platform": "osx"
