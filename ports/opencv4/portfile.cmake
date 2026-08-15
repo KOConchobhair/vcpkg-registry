@@ -497,6 +497,16 @@ vcpkg_cmake_configure(
         -DBUILD_opencv_java=OFF
         -DBUILD_opencv_js=OFF
         -DBUILD_JAVA=OFF
+        # ROC: begin - BUILD_FAT_JAVA_LIB defaults to ON for any static Android
+        # build (CMakeLists.txt: "ANDROID IF NOT BUILD_SHARED_LIBS"), and it does
+        # not consult BUILD_JAVA. When on, OpenCVModule.cmake compiles every module
+        # with CVAPI_EXPORTS - "force exports from static modules too" - so
+        # CV_EXPORTS becomes visibility("default") and the whole public API is
+        # re-exported from whatever links the archives, defeating any
+        # -fvisibility=hidden the triplet passes. This port builds no Java wrapper,
+        # so there is nothing for those forced exports to serve.
+        -DBUILD_FAT_JAVA_LIB=OFF
+        # ROC: end
         -DBUILD_ANDROID_PROJECT=OFF
         -DBUILD_ANDROID_EXAMPLES=OFF
         -DBUILD_PACKAGE=OFF
