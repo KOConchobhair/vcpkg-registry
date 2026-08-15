@@ -171,9 +171,10 @@ else
       END { for (k in cnt) printf "%8d  %s\n", cnt[k], k }' \
       | sort -rn | head -10 | sed 's/^/        /'
     echo "        sample DEFAULT symbols:"
-    readelf -sW "$core" 2>/dev/null \
-      | awk '$5=="GLOBAL" && $6=="DEFAULT" && $7!="UND" {print $8}' \
-      | sort -u | head -8 | { c++filt 2>/dev/null || cat; } | cut -c1-110 | sed 's/^/          /'
+    syms=$(readelf -sW "$core" 2>/dev/null \
+      | awk '$5=="GLOBAL" && $6=="DEFAULT" && $7!="UND" {print $8}' | sort -u)
+    printf '%s\n' "$syms" | { c++filt 2>/dev/null || cat; } | head -8 \
+      | cut -c1-110 | sed 's/^/          /'
   fi
 fi
 
@@ -246,6 +247,39 @@ for other in openssl schannel securetransport; do
     bad "q${other}backend is also present - a backend for another platform leaked in"
   fi
 done
+
+# On a static Qt the archive on disk is inert. Qt normally finds and dlopens a
+# backend at run time; a static build has nothing to dlopen, which is what qtbase's
+# own configure output says:
+#
+#   Note: Using static linking will disable the use of dynamically loaded plugins.
+#   Make sure to import all needed static plugins, or compile needed modules into
+#   the library.
+#
+# So the backend reaches the binary only if the application links its import
+# target, which is exactly what vcpkg's usage text for this install tells the
+# consumer to do:
+#
+#   target_link_libraries(main PRIVATE Qt6::Network Qt6::QTlsBackendCertOnlyPlugin
+#                         Qt6::QSecureTransportBackendPlugin ...)
+#
+# iOS is the only triplet this applies to: everywhere else qtbase is dynamic for
+# the LGPL, and keeps ordinary run-time plugin loading. Presence of the .a is
+# therefore necessary but not sufficient there, so assert what a consumer needs -
+# that the plugin is importable - rather than only that it was built.
+if [ "$OS" = ios ] && [ -n "$plugin" ]; then
+  echo "static Qt: the TLS backend must be importable, not merely present:"
+  target=$(find "$INSTALLED/$TRIPLET" -name '*SecureTransportBackendPlugin*.cmake' -print -quit 2>/dev/null)
+  if [ -n "$target" ]; then
+    ok "import target at ${target#$INSTALLED/$TRIPLET/}"
+  else
+    bad "no CMake import target for the plugin - a consumer cannot link it, so a"
+    echo "        static build would silently have no TLS backend at all."
+    echo "        plugin-related CMake files that are present:"
+    find "$INSTALLED/$TRIPLET" -name '*Plugin*.cmake' 2>/dev/null \
+      | sed "s|^$INSTALLED/$TRIPLET/||" | sort | head -12 | sed 's/^/          /'
+  fi
+fi
 
 # On the OpenSSL platforms there is a second question: linked or dlopened. That
 # distinction lives entirely in the plugin, so checking the Qt libraries instead

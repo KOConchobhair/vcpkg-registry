@@ -129,6 +129,33 @@ Each platform gets its native backend, and on Linux the OpenSSL backend is resol
 at run time rather than linked — which is what `ci/build_qt6.sh` line 19 does with
 `-openssl-runtime`.
 
+### On iOS the backend must be imported by the application
+
+`arm64-ios` is the one triplet where qtbase is static, and qtbase's configure says
+what that costs:
+
+> Note: Using static linking will disable the use of dynamically loaded plugins.
+> Make sure to import all needed static plugins, or compile needed modules into
+> the library.
+
+Since Qt 6.2 the TLS backends *are* plugins. With a dynamic Qt they are found and
+loaded at run time, so having `libqsecuretransportbackend.a` installed is enough.
+With a static Qt there is nothing to load it — the archive is inert unless the
+application links its import target, and a build that omits it gets no TLS backend
+at all, with no link error. vcpkg prints the required line in its usage text for
+this install:
+
+```cmake
+find_package(Qt6Network CONFIG REQUIRED)
+target_link_libraries(main PRIVATE Qt6::Network Qt6::QTlsBackendCertOnlyPlugin
+                      Qt6::QSecureTransportBackendPlugin Qt6::QAppleNetworkInformationPlugin)
+```
+
+**Consumers of the iOS artifacts have to link those plugin targets.** No other
+triplet is affected: everywhere else qtbase is dynamic for the LGPL and keeps
+ordinary run-time plugin loading. `verify.sh` asserts the plugin's CMake import
+target exists on iOS, rather than only that the archive was built.
+
 `schannel` is new. Qt has always had the backend —
 `qt_feature("schannel" ... CONDITION WIN32)` in `src/network/configure.cmake` —
 but the vcpkg port never exposed it, so the only way to get TLS on Windows was to
@@ -343,6 +370,28 @@ impossible selection instead of quietly building less than you asked for.
 `"default-features": false` silently removes. `intrinsics` is the one that hurts:
 it maps to `CV_ENABLE_INTRINSICS`, so dropping it costs every SSE/AVX and NEON
 code path in OpenCV, with no error and no obvious symptom beyond being slow.
+
+### `-fvisibility=hidden` needed a port change to work on Android
+
+The triplets pass `-fvisibility=hidden` for opencv, and on every other platform
+that is the whole story. On Android it was silently undone: `libopencv_core4.a`
+came out with 617 hidden globals and **2069 default** ones, all of them OpenCV's
+own public API (`cvRound(cv::softdouble)`, `cvIplImage`, …) from OpenCV's own
+translation units.
+
+The cause is upstream OpenCV's `BUILD_FAT_JAVA_LIB`, which defaults to
+`ANDROID IF NOT BUILD_SHARED_LIBS` — on for any static Android build, which is
+exactly what `arm64-android` is. It does not consult `BUILD_JAVA`. When on,
+`OpenCVModule.cmake` compiles every module with `CVAPI_EXPORTS` ("force exports
+from static modules too"), which turns `CV_EXPORTS` into
+`__attribute__((visibility("default")))` and re-exports the entire API from
+whatever links the archives — precisely what the flag was meant to prevent.
+
+So `ports/opencv4/portfile.cmake` now passes `-DBUILD_FAT_JAVA_LIB=OFF` beside
+the `BUILD_JAVA=OFF` it already set. This port builds no Java wrapper, so the
+forced exports served nothing. Stock vcpkg's community `arm64-android` triplet is
+static too, so upstream has the same latent bug — see "Proposing a change
+upstream".
 
 ### Remaining gaps
 
