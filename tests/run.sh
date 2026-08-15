@@ -11,6 +11,14 @@
 #   VCPKG_BASELINE                upstream commit to bootstrap the vcpkg tool at
 #   REGISTRY_HEAD                 commit the registry modes resolve against
 #
+# Optional, and only set in CI - a NuGet feed used as a second binary cache in
+# addition to VCPKG_DEFAULT_BINARY_CACHE, never instead of it:
+#
+#   VCPKG_NUGET_FEED   feed index URL; enables the block when set with a token
+#   VCPKG_NUGET_TOKEN  password and API key for that feed
+#   VCPKG_NUGET_USER   feed username                          (default vcpkg)
+#   VCPKG_NUGET_MODE   read, write or readwrite               (default readwrite)
+#
 # Locally: driven by ./tests/build.sh, which supplies container mounts.
 # In CI: called directly with runner paths, see .github/workflows/ports.yml.
 #
@@ -107,6 +115,45 @@ if [ ! -x "$VCPKG" ]; then
   else
     "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
   fi
+fi
+
+# Optional NuGet binary cache, layered on top of the local files cache rather than
+# replacing it. VCPKG_BINARY_SOURCES entries are additive unless the list starts
+# with "clear", so $VCPKG_DEFAULT_BINARY_CACHE keeps working and the workflow's
+# actions/cache of that directory is untouched.
+#
+# This lives here rather than in the workflow because the nuget.exe involved is
+# vcpkg's own, and vcpkg does not exist until the bootstrap above has run. Both
+# variables are absent on a local run, so this is skipped entirely there.
+if [ -n "${VCPKG_NUGET_FEED:-}" ] && [ -n "${VCPKG_NUGET_TOKEN:-}" ]; then
+  echo "=== configuring NuGet binary cache: $VCPKG_NUGET_FEED ==="
+  NUGET="$("$VCPKG" fetch nuget | tail -n 1)"
+  # nuget.exe is a .NET assembly. Windows runs it directly; everywhere else needs
+  # mono, which is why this is not enabled on every leg yet.
+  if [ "$IS_WINDOWS" = 1 ]; then
+    run_nuget() { "$NUGET" "$@"; }
+  else
+    if ! command -v mono >/dev/null 2>&1; then
+      echo "error: mono is required to run nuget.exe on $(uname -s), and is not installed." >&2
+      echo "       ubuntu-22.04 ships it; newer images and the macOS runners may not." >&2
+      echo "       Add mono-complete to tests/apt-packages.txt, or drop nuget from this" >&2
+      echo "       leg's matrix entry in .github/workflows/ports.yml." >&2
+      exit 1
+    fi
+    run_nuget() { mono "$NUGET" "$@"; }
+  fi
+  # Not silenced: if the cache cannot be configured, that is the thing being
+  # tested, and a green leg that quietly stopped using the feed would be worse
+  # than a red one.
+  run_nuget sources add \
+    -Source "$VCPKG_NUGET_FEED" \
+    -StorePasswordInClearText \
+    -Name GitHubPackages \
+    -UserName "${VCPKG_NUGET_USER:-vcpkg}" \
+    -Password "$VCPKG_NUGET_TOKEN"
+  run_nuget setapikey "$VCPKG_NUGET_TOKEN" -Source "$VCPKG_NUGET_FEED"
+  export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:+${VCPKG_BINARY_SOURCES};}nuget,${VCPKG_NUGET_FEED},${VCPKG_NUGET_MODE:-readwrite}"
+  echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES"
 fi
 
 # The manifest's overlay-triplets is "../triplets", resolved relative to the

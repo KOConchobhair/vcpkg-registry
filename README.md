@@ -589,6 +589,53 @@ somebody else's"* — `qopensslbackend` on Linux, `qsecuretransportbackend` on m
 the exact path a consumer takes. Every mode here is vcpkg **manifest mode**; there
 is no classic-mode path.
 
+### Binary caching
+
+Two layers, deliberately, and the second is additive rather than a replacement.
+
+**A per-triplet Actions cache** of `$VCPKG_DEFAULT_BINARY_CACHE` and the downloads
+directory, keyed on `hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json')`. The
+restored directory holds one zip per package named by its own ABI hash, so even a
+stale snapshot yields a hit for every package whose ABI has not moved — that is
+what makes a plain directory cache behave like a per-package one on the read side.
+Restore and save are separate steps so a leg that fails late still keeps what it
+built.
+
+**A NuGet feed on GitHub Packages**, configured in `tests/run.sh` rather than in
+the workflow, because the `nuget.exe` involved is vcpkg's own and vcpkg does not
+exist until `run.sh` has bootstrapped it. It is enabled only when
+`VCPKG_NUGET_FEED` and `VCPKG_NUGET_TOKEN` are both set, so local runs are
+unaffected. `VCPKG_BINARY_SOURCES` entries are additive unless the list starts with
+`clear`, so the Actions cache above keeps working unchanged.
+
+Three things about GitHub Packages worth knowing before relying on it:
+
+- **Feeds are scoped to the owner, not the repository.** The URL is
+  `https://nuget.pkg.github.com/<OWNER>/index.json`; there is no per-repository
+  feed. Packages link to whichever repository pushed them.
+- **Consumers need their own token.** GitHub Packages NuGet has no anonymous
+  access even for public packages, so anyone restoring from this feed needs a
+  classic PAT with `read:packages`. That is the reason the attested tarballs below
+  exist — they need no token at all.
+- It runs only on `push`. A `pull_request` from a fork gets a read-only token, and
+  asking for `readwrite` there would fail the leg on something other than the
+  thing under test. The two macOS legs are also excluded for now: `nuget.exe`
+  needs `mono` there and those images are not documented to ship it.
+
+### Build provenance
+
+Each leg packages its installed tree as `vcpkg-<triplet>-<sha>.tar.gz`, uploads it,
+and signs a SLSA provenance statement over it with
+[`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance).
+Attestations are free here because the repository is public — on Free, Pro and Team
+plans they are public-repository-only. To check a download:
+
+```
+gh attestation verify vcpkg-x64-linux-<sha>.tar.gz -R KOConchobhair/vcpkg-registry
+```
+
+That binds the tarball to the workflow, commit and runner that produced it.
+
 Locally, `tests/build.sh` does the same thing in Ubuntu 22.04 containers under
 colima:
 

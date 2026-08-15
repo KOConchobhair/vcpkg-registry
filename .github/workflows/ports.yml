@@ -16,6 +16,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Declaring any permission replaces the whole default set, so contents: read has
+# to be spelled out or checkout loses its token. packages is for the NuGet binary
+# cache; id-token and attestations are what actions/attest-build-provenance signs
+# with. Attestations are free here because the repository is public - on Free, Pro
+# and Team they are public-repository-only.
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
 env:
   # The upstream commit the ports were vendored from, and the baseline
   # tests/vcpkg.json pins. Ports outside this registry come from here.
@@ -30,15 +41,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-22.04, triplet: x64-linux, os: linux }
-          - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux }
+          # nuget: whether this leg also pushes to the GitHub Packages binary
+          # cache. Off on the two macOS legs for now: nuget.exe needs mono there
+          # and the runner image is not documented to ship it, so those wait until
+          # the linux and windows legs have proved the feed works.
+          - { runner: ubuntu-22.04, triplet: x64-linux, os: linux, nuget: true }
+          - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux, nuget: true }
           - { runner: macos-14, triplet: arm64-osx, os: macos }
-          - { runner: windows-2022, triplet: x64-windows, os: windows }
+          - { runner: windows-2022, triplet: x64-windows, os: windows, nuget: true }
           # Cross targets: host_triplet is the machine doing the building, since
           # android and ios binaries cannot run on the runner and vcpkg needs host
           # tools (moc, and the host qtbase behind it) it can execute.
           # ANDROID_NDK_HOME comes from the runner image itself; no step sets it.
-          - { runner: ubuntu-22.04, triplet: arm64-android, os: linux, host_triplet: x64-linux }
+          - { runner: ubuntu-22.04, triplet: arm64-android, os: linux, host_triplet: x64-linux, nuget: true }
           - { runner: macos-14, triplet: arm64-ios, os: macos, host_triplet: arm64-osx }
     defaults:
       run:
@@ -119,6 +134,17 @@ jobs:
           REGISTRY_HEAD: ${{ github.sha }}
           # Empty for the four native triplets, so run.sh falls back to the target.
           HOST_TRIPLET: ${{ matrix.host_triplet }}
+          # GitHub Packages NuGet feeds are scoped to the owner, not to a
+          # repository - there is no per-repo feed URL. Packages therefore land
+          # under this account and link to whichever repository pushed them.
+          #
+          # Only on push: a pull_request from a fork gets a read-only token, and
+          # asking for readwrite there would fail the leg on something that is not
+          # the thing under test. Empty on the macOS legs (see matrix), and an
+          # empty feed switches the block in run.sh off entirely.
+          VCPKG_NUGET_FEED: ${{ (matrix.nuget && github.event_name == 'push') && format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) || '' }}
+          VCPKG_NUGET_TOKEN: ${{ (matrix.nuget && github.event_name == 'push') && secrets.GITHUB_TOKEN || '' }}
+          VCPKG_NUGET_USER: ${{ github.repository_owner }}
 
       # Runs even when the build failed, so a partial leg keeps whatever it managed
       # to build. Skipped on an exact key hit, where re-uploading would be pure cost.
@@ -143,6 +169,41 @@ jobs:
           # diagnose instead of being answerable from the run that failed.
           find "$d" \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) \
             -not -path "$d/lib/*" -not -path "$d/bin/*" 2>/dev/null | sort || true
+
+      # One distributable per leg, so provenance has a concrete subject - and so
+      # there is something a teammate can download without the personal access
+      # token GitHub Packages NuGet requires even for a public feed.
+      #
+      # tar -czf rather than zstd: bsdtar on the macOS and Windows runners is not
+      # guaranteed to have --zstd, and this is not the place to find out.
+      - name: Package installed tree
+        id: pack
+        if: success() && github.event_name == 'push'
+        run: |
+          t="${RUNNER_TEMP}"
+          command -v cygpath >/dev/null 2>&1 && t="$(cygpath -u "$t")"
+          d="$t/work/installed/${{ matrix.triplet }}"
+          out="$t/vcpkg-${{ matrix.triplet }}-${GITHUB_SHA:0:7}.tar.gz"
+          tar -czf "$out" -C "$(dirname "$d")" "$(basename "$d")"
+          ls -lh "$out"
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installed tree
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: vcpkg-${{ matrix.triplet }}
+          path: ${{ steps.pack.outputs.path }}
+          retention-days: 30
+
+      # Signs a SLSA provenance statement binding that tarball to this workflow,
+      # commit and runner. Verify a download with:
+      #   gh attestation verify vcpkg-<triplet>-<sha>.tar.gz -R <owner>/vcpkg-registry
+      - name: Attest build provenance
+        if: success() && github.event_name == 'push'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.pack.outputs.path }}
 
       - name: Upload failure logs
         if: failure()
