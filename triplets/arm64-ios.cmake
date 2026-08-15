@@ -33,10 +33,27 @@ endif()
 set(VCPKG_CMAKE_SYSTEM_NAME iOS)
 
 # Autotools ports (libb2, which qtbase requires on every non-Windows platform) must
-# be told they are cross-compiling, or configure tries to run the test binaries it
-# just built and dies with "cannot run C compiled programs". --host differing from
-# --build is what puts autoconf into cross mode. Upstream's arm64-ios triplet omits
-# this; its community status means nothing exercises libb2 there.
-set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-apple-darwin")
+# be told they are cross-compiling, or configure runs the test binaries it just
+# built - iOS binaries, on a macOS host - and dies with "cannot run C compiled
+# programs". Autoconf decides that solely by comparing --host with --build.
+#
+# vcpkg cannot get this right by itself when the runner is an Apple-silicon Mac.
+# z_vcpkg_make_determine_target_triplet in the vcpkg-make port does:
+#
+#     elseif(VCPKG_TARGET_IS_IOS OR VCPKG_TARGET_IS_OSX)
+#         set(output "${TARGET_ARCH}-apple-darwin")
+#
+# which yields aarch64-apple-darwin, while --build is read from the host's
+# build_opt_triplet.txt and is also aarch64-apple-darwin. Identical, so no cross
+# mode. vcpkg knows the rule elsewhere - the UWP branch just above says "Needs to be
+# different from --build to enable cross builds" - it just does not apply it to iOS.
+# The bug is invisible on an Intel Mac, where --build is x86_64-apple-darwin.
+#
+# aarch64-apple-ios is correct rather than merely different: it names the same
+# architecture and the actual target OS, and autoconf's config.sub canonicalises it
+# (arm64-apple-ios normalises to it too). An earlier attempt used arm-apple-darwin,
+# which worked only by being a different string - and said 32-bit ARM, which is a
+# lie about a build the compiler is emitting arm64 for.
+set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-apple-ios")
 
 set(VCPKG_BUILD_TYPE release)
