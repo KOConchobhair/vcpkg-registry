@@ -36,6 +36,45 @@ esac
 # Shared libraries live in bin/ on Windows; the import .lib stays in lib/.
 case "$OS" in windows) SHAREDDIR="$INSTALLED/$TRIPLET/bin" ;; *) SHAREDDIR="$LIB" ;; esac
 
+# One pass over the installed tree, so lookups match on basename instead of
+# assuming a directory layout. Every layout assumption here has now been wrong on
+# some platform: Android installs opencv under sdk/native/staticlibs/<abi>/ rather
+# than lib/, Qt suffixes its Android libraries with the ABI, static Qt plugins land
+# in a plugins/ directory, and Windows splits the .dll from the import .lib.
+#
+# The failure mode that matters is not the false FAIL - it is that a hard-coded
+# lib/ made every "must NOT be built" check on Android pass vacuously. Nothing was
+# in the directory being searched, so the excluded modules were "absent" for the
+# same reason the required ones were "missing".
+#
+# Rooted at the triplet, never at $INSTALLED: on the cross-compiling legs the host
+# packages sit next door in installed/x64-linux and installed/arm64-osx, and a
+# host Qt6Gui would otherwise fail an absence check for the target.
+# Narrowed to libraries at the find level so match() iterates over a few hundred
+# entries rather than the whole tree's tens of thousands of headers.
+#
+# tools/ is pruned. It holds deployed copies of the runtime libraries next to moc
+# and rcc on Windows, which are duplicates for a presence check but would make an
+# absence check fail on a module that is only there because a tool links it. The
+# TLS plugins are unaffected - they sit in Qt6/plugins/tls on all five platforms.
+TREE=$(find "$INSTALLED/$TRIPLET" -path "$INSTALLED/$TRIPLET/tools" -prune -o \
+    \( -type f -o -type l \) \
+    \( -name '*.a' -o -name '*.so' -o -name '*.so.*' \
+       -o -name '*.dylib' -o -name '*.dll' -o -name '*.lib' \) -print 2>/dev/null)
+
+# Paths in the tree whose basename matches any of the given shell globs. The
+# patterns are always an exact name plus extension - a bare Qt6Gui* would match
+# Qt6GuiTools, and a bare opencv_video* would match opencv_videoio4, which is a
+# different module and is legitimately present.
+match() {
+  local p pat
+  printf '%s\n' "$TREE" | while IFS= read -r p; do
+    for pat in "$@"; do
+      case "${p##*/}" in $pat) printf '%s\n' "$p"; break ;; esac
+    done
+  done
+}
+
 # Names a shared library links, one per line - the platform's DT_NEEDED analogue.
 needed_libs() {
   case "$OS" in
@@ -46,16 +85,17 @@ needed_libs() {
 }
 
 # The port passes OPENCV_DLLVERSION=4, so modules land as libopencv_core4.a
-# rather than libopencv_core.a. Match both, and match exactly - a glob would
-# make the "video must be absent" check pass or fail on libopencv_videoio4.a,
-# which is a different module and is legitimately present.
+# rather than libopencv_core.a on most platforms. The Android build numbers them
+# differently and installs them somewhere else entirely, so both spellings are
+# matched and the search covers the whole tree.
 have_module() {
+  local n e pats=()
   for n in "${LIBPFX}opencv_$1" "${LIBPFX}opencv_${1}4"; do
     for e in "$STATIC_EXT" "$SHARED_EXT"; do
-      [ -f "$LIB/$n.$e" ] && return 0
+      pats+=("$n.$e")
     done
   done
-  return 1
+  [ -n "$(match "${pats[@]}")" ]
 }
 
 # Qt libraries are libQt6Core.so / libQt6Core.dylib / Qt6Core.dll (+ Qt6Core.lib).
@@ -64,13 +104,15 @@ have_module() {
 # name: QtCore.framework/Versions/A/QtCore, not Qt6Core. Checking for "Qt6Core"
 # there is why every macOS Qt assertion failed against a build that was in fact
 # correct.
+#
+# Android adds a fourth spelling: Qt suffixes every library with the ABI, so Core
+# arrives as libQt6Core_arm64-v8a.so. The variant is anchored on the underscore
+# rather than written as a bare Qt6Core*, which would also match Qt6CoreTools.
 have_qt() {
-  local n
-  for n in "${LIBPFX}Qt6$1.$SHARED_EXT" "Qt6$1.$SHARED_EXT" \
-           "${LIBPFX}Qt6$1.$STATIC_EXT" "Qt6$1.$STATIC_EXT"; do
-    [ -f "$LIB/$n" ] && return 0
-    [ -f "$SHAREDDIR/$n" ] && return 0
-  done
+  local pats=("${LIBPFX}Qt6$1.$SHARED_EXT" "Qt6$1.$SHARED_EXT" \
+              "${LIBPFX}Qt6$1.$STATIC_EXT" "Qt6$1.$STATIC_EXT")
+  [ "$OS" = android ] && pats+=("${LIBPFX}Qt6${1}_*.$SHARED_EXT" "${LIBPFX}Qt6${1}_*.$STATIC_EXT")
+  [ -n "$(match "${pats[@]}")" ] && return 0
   [ -f "$LIB/Qt$1.framework/Versions/A/Qt$1" ] && return 0
   [ -f "$LIB/Qt$1.framework/Qt$1" ] && return 0
   return 1
@@ -102,9 +144,11 @@ done
 # With it, every defined global in the archive is HIDDEN; without it they are
 # DEFAULT and would be re-exported from whatever shared library links opencv in.
 echo "opencv4 built with hidden visibility (triplet parity):"
-core=$(ls "$LIB"/libopencv_core*.a 2>/dev/null | head -1)
-if [ "$OS" != linux ] && [ "$OS" != android ]; then
-  skip "readelf-based visibility check needs ELF (Windows has no -fvisibility at all)"
+core=$(match "${LIBPFX}opencv_core.$STATIC_EXT" "${LIBPFX}opencv_core4.$STATIC_EXT" | head -1)
+if [ "$OS" = windows ]; then
+  skip "the triplet passes no -fvisibility on Windows; there is nothing to check"
+elif [ "$OS" = osx ] || [ "$OS" = ios ]; then
+  skip "this check reads an ELF symbol table; the same assertion on Mach-O needs nm -m"
 elif [ -z "$core" ]; then
   bad "no libopencv_core archive to inspect"
 else
@@ -170,7 +214,11 @@ fi
 # platform-qualified features select, so the first check is simply: did this
 # platform produce its own backend and not somebody else's?
 echo "TLS backend plugin for ${OS} must be ${TLS_BACKEND}:"
-plugin_for() { find "$INSTALLED/$TRIPLET" -name "*q${1}backend*.${SHARED_EXT}" -print -quit 2>/dev/null; }
+# Both extensions: a static triplet builds the plugin as an archive, so arm64-ios
+# produces libqsecuretransportbackend.a and searching only for .dylib found
+# nothing at all. Substring rather than exact name, because Android spells the
+# same plugin libplugins_tls_qopensslbackend_arm64-v8a.so.
+plugin_for() { match "*q${1}backend*.${SHARED_EXT}" "*q${1}backend*.${STATIC_EXT}" | head -1; }
 plugin=$(plugin_for "$TLS_BACKEND")
 if [ -z "$plugin" ]; then
   bad "no q${TLS_BACKEND}backend plugin - the platform's TLS feature produced no backend"

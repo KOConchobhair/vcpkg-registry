@@ -137,6 +137,12 @@ jobs:
           d="${RUNNER_TEMP}/work/installed/${{ matrix.triplet }}"
           ls -la "$d/lib" 2>/dev/null || true
           ls -la "$d/bin" 2>/dev/null || true
+          # Every library outside lib/ and bin/. Listing only those two is what
+          # left the Android opencv location and the static iOS TLS plugin name
+          # invisible in the logs, so a verify.sh miss cost a CI round-trip to
+          # diagnose instead of being answerable from the run that failed.
+          find "$d" \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) \
+            -not -path "$d/lib/*" -not -path "$d/bin/*" 2>/dev/null | sort || true
 
       - name: Upload failure logs
         if: failure()
