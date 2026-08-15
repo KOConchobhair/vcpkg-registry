@@ -183,11 +183,16 @@ check_gui_flavor() {
     local parsed
     parsed=$(printf '%s\n' "$out" | "$PY_BIN" -c '
 import re,sys
+# Anchor on the target triplet. A cross build plans two qtbase packages - the
+# target one and a host one for moc - and taking whichever came first picked the
+# host on android, reporting a desktop Linux feature set as if it were the
+# Android target.
+triplet = sys.argv[1]
 for line in sys.stdin:
-    m = re.match(r"\s*\*?\s*qtbase\[([^]]*)\]", line)
+    m = re.match(r"\s*\*?\s*qtbase\[([^]]*)\]:" + re.escape(triplet) + r"\b", line)
     if m:
         print(m.group(1).replace(",", " ")); break
-')
+' "$TRIPLET")
     if [ -z "$parsed" ]; then
       # Exited 0 but the plan had no qtbase line. Dump what it did say - guessing
       # from an empty feature list is what made the macOS failure undiagnosable.
@@ -199,6 +204,13 @@ for line in sys.stdin:
   }
   echo "=== qtbase flavours ==="
   base=$(qt_features)  || return 1
+  case "$TRIPLET" in
+    *-ios*|*-android*)
+      echo "  headless   : ${base}"
+      echo "  skip  gui is desktop-only; tests/vcpkg.json does not offer it here"
+      return 0
+      ;;
+  esac
   gui=$(qt_features gui) || return 1
   echo "  headless   : ${base}"
   echo "  + gui      : ${gui}"

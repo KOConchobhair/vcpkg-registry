@@ -59,6 +59,12 @@
     },
     "openssl",
     {
+      "$comment": "Host qtbase (moc) on cross builds. Without this the host package gets qtbase's full upstream defaults - icu, libpq, the X11 stack - because the target entry's default-features:false does not apply to it.",
+      "name": "qtbase",
+      "host": true,
+      "default-features": false
+    },
+    {
       "name": "qtbase",
       "default-features": false,
       "features": [
@@ -112,7 +118,7 @@
       ]
     },
     "gui": {
-      "description": "Add Qt GUI on top of the headless set above - gui, widgets and Sql with the SQLite driver. Off by default.",
+      "description": "Enable GUI support via Qt. Desktop only - internal tooling, never part of the shipped mobile package.",
       "dependencies": [
         {
           "name": "qtbase",
@@ -122,7 +128,8 @@
             "sql",
             "sql-sqlite",
             "widgets"
-          ]
+          ],
+          "platform": "!ios & !android"
         }
       ]
     },
