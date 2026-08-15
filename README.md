@@ -233,11 +233,15 @@ Retired, because the ports now cover them:
   original comment already said "fixed in 4.10.0#2".
 - `-DWITH_MSMF=OFF` (x64-windows) — likewise, `msmf` is a feature.
 
-Added, because they are parity items that a port *cannot* express — visibility is
-a compiler flag, and `WITH_PTHREADS_PF` has no upstream feature:
+Added, because it is a parity item that a port *cannot* express — visibility is a
+compiler flag:
 
-- `-fvisibility=hidden` for opencv on the three non-Windows triplets
-- `-DWITH_PTHREADS_PF=OFF` for opencv everywhere
+- `-fvisibility=hidden` for opencv on the non-Windows triplets
+
+Dropped, as a deliberate divergence from `build_opencv.sh` — see "OpenCV
+threading" below:
+
+- `-DWITH_PTHREADS_PF=OFF`
 
 ### Linkage
 
@@ -351,7 +355,7 @@ hand. What follows is the full accounting, including what does *not* match.
 | `BUILD_SHARED_LIBS=OFF` | triplet: `VCPKG_LIBRARY_LINKAGE static` |
 | `BUILD_{JPEG,PNG,TIFF,WEBP,OPENEXR,OPENJPEG,PROTOBUF}=ON` | the vcpkg ports instead of OpenCV's bundled copies |
 | `-DCMAKE_CXX_FLAGS=-fvisibility=hidden` | triplet, on the three non-Windows triplets |
-| `WITH_PTHREADS_PF=OFF` | triplet, everywhere |
+| `WITH_PTHREADS_PF=OFF` | **deliberately not carried over** — see "OpenCV threading" |
 | `WITH_AVFOUNDATION=OFF` | **not exposed by the port**; force it from a triplet's `ADDITIONAL_BUILD_FLAGS` if it matters |
 
 The six new features are `features2d`, `flann`, `objdetect`, `photo`,
@@ -392,6 +396,37 @@ the `BUILD_JAVA=OFF` it already set. This port builds no Java wrapper, so the
 forced exports served nothing. Stock vcpkg's community `arm64-android` triplet is
 static too, so upstream has the same latent bug — see "Proposing a change
 upstream".
+
+### OpenCV threading: `WITH_PTHREADS_PF=OFF` is not carried over
+
+`build_opencv.sh` line 84 passes `-DWITH_PTHREADS_PF=OFF`. The triplets here used
+to as well, and no longer do.
+
+`WITH_PTHREADS_PF` is not a dependency toggle despite sitting in that script's
+alphabetical block of `WITH_*=OFF` flags, every other member of which disables an
+external library. It is OpenCV's own pthreads backend for `cv::parallel_for_`, and
+the last resort in a fixed priority chain (`modules/core/src/parallel.cpp`):
+TBB → HPX → OpenMP → GCD → WinRT → Concurrency → pthreads.
+
+With TBB, OpenMP and HPX all off — which is the case here — turning it off left
+`Parallel framework: none` on Linux and Android, so every `parallel_for_` ran
+inline on the calling thread, `dnn` included. On macOS, iOS and Windows it was
+inert: `parallel.cpp` `#define`s `HAVE_GCD` from `__APPLE__` and
+`HAVE_CONCURRENCY` from `_MSC_VER`, both of which outrank pthreads.
+
+Dropping it does not change how the ROC SDK behaves, because the SDK calls
+`cv::setNumThreads(0)`. That sets `numThreads` to `0`, and `parallel_for_impl`
+only parallelises when `numThreads < 0 || numThreads > 1`, so execution stays
+sequential regardless of which backend is compiled in — the same runtime call
+these artifacts already depended on for the three platforms where the flag never
+applied.
+
+What changes is that the choice becomes a runtime one. With the backend compiled
+out, `setNumThreads(N)` was a silent no-op on Linux and Android; a deployment that
+wants OpenCV's parallelism can now ask for it without a rebuild. The tradeoff is
+that sequential execution is no longer guaranteed by the build on those targets:
+anything that touches OpenCV before `setNumThreads(0)` takes effect, or any other
+consumer of these artifacts that never calls it, gets upstream's default pool.
 
 ### Remaining gaps
 

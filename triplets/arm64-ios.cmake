@@ -22,11 +22,11 @@ set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 
 # Parity with ci/build_opencv.sh, and the debug-info fix - see arm64-linux.cmake
-# for the measurements behind the second one.
+# for the measurements behind the second one, and for why WITH_PTHREADS_PF=OFF
+# is deliberately not carried over.
 if(PORT MATCHES "opencv")
     set(VCPKG_C_FLAGS "${VCPKG_C_FLAGS} -fvisibility=hidden")
     set(VCPKG_CXX_FLAGS "${VCPKG_CXX_FLAGS} -fvisibility=hidden")
-    list(APPEND ADDITIONAL_BUILD_FLAGS "-DWITH_PTHREADS_PF=OFF")
     list(APPEND ADDITIONAL_BUILD_FLAGS "-DBUILD_WITH_DEBUG_INFO=OFF")
 endif()
 

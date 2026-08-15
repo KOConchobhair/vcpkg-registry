@@ -23,7 +23,6 @@ if(PORT MATCHES "^(qtbase|ffmpeg|openssl|numactl)$")
 endif()
 
 if(PORT MATCHES "opencv")
-    list(APPEND ADDITIONAL_BUILD_FLAGS "-DWITH_PTHREADS_PF=OFF")
     # The port hard-codes -DBUILD_WITH_DEBUG_INFO=ON, which puts DWARF into the
     # release static libs: 79 MB of the 116 MB of libopencv_*.a on arm64-linux, 68%
     # of their size, with libopencv_dnn4.a alone going 59.7 -> 17.4 MB. Nothing else
