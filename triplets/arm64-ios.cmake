@@ -31,4 +31,12 @@ if(PORT MATCHES "opencv")
 endif()
 
 set(VCPKG_CMAKE_SYSTEM_NAME iOS)
+
+# Autotools ports (libb2, which qtbase requires on every non-Windows platform) must
+# be told they are cross-compiling, or configure tries to run the test binaries it
+# just built and dies with "cannot run C compiled programs". --host differing from
+# --build is what puts autoconf into cross mode. Upstream's arm64-ios triplet omits
+# this; its community status means nothing exercises libb2 there.
+set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-apple-darwin")
+
 set(VCPKG_BUILD_TYPE release)

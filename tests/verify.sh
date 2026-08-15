@@ -60,7 +60,10 @@ have_module() {
 
 # Qt libraries are libQt6Core.so / libQt6Core.dylib / Qt6Core.dll (+ Qt6Core.lib).
 # Qt lands as a shared library, a static library, or - on macOS with the framework
-# feature - a Qt6Xxx.framework bundle with the binary inside it.
+# feature - a framework bundle. Note the bundle drops the major version from its
+# name: QtCore.framework/Versions/A/QtCore, not Qt6Core. Checking for "Qt6Core"
+# there is why every macOS Qt assertion failed against a build that was in fact
+# correct.
 have_qt() {
   local n
   for n in "${LIBPFX}Qt6$1.$SHARED_EXT" "Qt6$1.$SHARED_EXT" \
@@ -68,8 +71,20 @@ have_qt() {
     [ -f "$LIB/$n" ] && return 0
     [ -f "$SHAREDDIR/$n" ] && return 0
   done
-  [ -f "$LIB/Qt6$1.framework/Qt6$1" ] && return 0
+  [ -f "$LIB/Qt$1.framework/Versions/A/Qt$1" ] && return 0
+  [ -f "$LIB/Qt$1.framework/Qt$1" ] && return 0
   return 1
+}
+
+# Every Qt binary, whichever layout is in use - so the link checks below inspect
+# something real on macOS instead of globbing for dylibs that a framework build
+# never produces and passing vacuously.
+qt_binaries() {
+  local out=""
+  out="$(ls "$LIB"/${LIBPFX}Qt6*."$SHARED_EXT" 2>/dev/null)"
+  [ -n "$out" ] || out="$(ls "$LIB"/Qt*.framework/Versions/A/Qt* 2>/dev/null)"
+  [ -n "$out" ] || out="$(ls "$LIB"/${LIBPFX}Qt6*."$STATIC_EXT" 2>/dev/null)"
+  printf '%s\n' "$out"
 }
 
 echo "=== verifying $TRIPLET ==="
@@ -143,8 +158,8 @@ have_qt Xml && ok "Qt6Xml present, as documented" \
 # static archives instead - see triplets/arm64-ios.cmake.
 if [ "$OS" = osx ]; then
   echo "macOS framework build:"
-  [ -d "$LIB/Qt6Core.framework" ] && ok "Qt6Core.framework present" \
-    || bad "Qt6Core.framework missing - the framework feature did not take effect"
+  [ -d "$LIB/QtCore.framework" ] && ok "QtCore.framework present" \
+    || bad "QtCore.framework missing - the framework feature did not take effect"
 elif [ "$OS" = ios ]; then
   skip "frameworks are unavailable on ios (feature is osx & !static); static archives expected"
 fi
@@ -219,7 +234,7 @@ if [ "$OS" = windows ]; then
   skip "Qt library link inspection needs readelf/otool"
 else
   echo "Qt libraries linking OpenSSL (expected under ${WANT} on ${OS}):"
-  qt_ssl=$(needed_libs "$LIB"/${LIBPFX}Qt6*.${SHARED_EXT} | grep -E 'libssl|libcrypto' | sort -u | tr '\n' ' ')
+  qt_ssl=$(needed_libs $(qt_binaries) | grep -E 'libssl|libcrypto' | sort -u | tr '\n' ' ')
   if [ "$TLS_BACKEND" != openssl ]; then
     [ -z "$qt_ssl" ] && ok "none - ${OS} uses ${TLS_BACKEND}, so OpenSSL is absent entirely" \
                      || bad "bound to $qt_ssl despite using ${TLS_BACKEND}"
@@ -232,7 +247,7 @@ else
   fi
 
   echo "no-icu parity: no Qt library may link ICU:"
-  qt_icu=$(needed_libs "$LIB"/${LIBPFX}Qt6*.${SHARED_EXT} | grep -E 'libicu|ICU')
+  qt_icu=$(needed_libs $(qt_binaries) | grep -E 'libicu|ICU')
   [ -z "$qt_icu" ] && ok "no link against ICU" \
                    || bad "links ICU: $(echo $qt_icu | tr '\n' ' ')"
 fi
