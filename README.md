@@ -617,10 +617,18 @@ Three things about GitHub Packages worth knowing before relying on it:
   access even for public packages, so anyone restoring from this feed needs a
   classic PAT with `read:packages`. That is the reason the attested tarballs below
   exist — they need no token at all.
-- It runs only on `push`. A `pull_request` from a fork gets a read-only token, and
-  asking for `readwrite` there would fail the leg on something other than the
-  thing under test. The two macOS legs are also excluded for now: `nuget.exe`
-  needs `mono` there and those images are not documented to ship it.
+- It never runs on `pull_request`. A fork PR gets a read-only token, and asking
+  for `readwrite` there would fail the leg on something other than the thing under
+  test. The two macOS legs are also excluded for now: `nuget.exe` needs `mono`
+  there and those images are not documented to ship it.
+
+**vcpkg only uploads packages it builds.** Restored ones are not re-published, so
+while the Actions cache is warm nothing reaches NuGet — the first run with both
+layers enabled restored all 33 packages and pushed none. That is why
+`workflow_dispatch` takes a `seed_binary_cache` input: it skips the Actions cache
+restore so everything rebuilds and populates the feed, without deleting the caches
+that make ordinary runs fast. Removing the Actions layer is a decision for after
+the feed has demonstrated *restores*, not merely pushes.
 
 ### Build provenance
 
