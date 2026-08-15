@@ -86,9 +86,19 @@ jobs:
       # acquires nasm and perl itself when a port asks for them.
 
       # Keyed on everything that affects an ABI hash, so a port or triplet edit
-      # invalidates cleanly while restore-keys still seeds from the last run.
+      # invalidates cleanly while restore-keys still seeds from the last run. The
+      # restored directory holds one zip per package, each named by its own ABI
+      # hash, so even a stale snapshot yields a hit for every package whose ABI has
+      # not moved - which is what makes this behave like a per-package cache on the
+      # read side.
+      #
+      # Split into restore + save deliberately. The combined action only writes the
+      # cache when the job succeeds, so a leg that fails late - as the mobile ones
+      # have been doing after ten minutes of compiling - threw away everything it
+      # built and started from nothing next run.
       - name: Restore vcpkg caches
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ${{ runner.temp }}/cache
@@ -109,6 +119,17 @@ jobs:
           REGISTRY_HEAD: ${{ github.sha }}
           # Empty for the four native triplets, so run.sh falls back to the target.
           HOST_TRIPLET: ${{ matrix.host_triplet }}
+
+      # Runs even when the build failed, so a partial leg keeps whatever it managed
+      # to build. Skipped on an exact key hit, where re-uploading would be pure cost.
+      - name: Save vcpkg caches
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/cache
+            ${{ runner.temp }}/downloads
+          key: vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-${{ hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json') }}
 
       - name: Installed tree
         if: always()
