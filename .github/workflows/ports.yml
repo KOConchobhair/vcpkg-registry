@@ -46,7 +46,7 @@ jobs:
         # everywhere. It converts the Actions-supplied paths with cygpath.
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # consumer mode clones this repo as a git registry at github.sha.
           fetch-depth: 0
@@ -88,7 +88,7 @@ jobs:
       # Keyed on everything that affects an ABI hash, so a port or triplet edit
       # invalidates cleanly while restore-keys still seeds from the last run.
       - name: Restore vcpkg caches
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ runner.temp }}/cache
@@ -119,7 +119,7 @@ jobs:
 
       - name: Upload failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logs-${{ matrix.triplet }}
           path: ${{ runner.temp }}/work/buildtrees/**/*.log
