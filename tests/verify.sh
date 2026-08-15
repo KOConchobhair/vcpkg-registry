@@ -159,6 +159,21 @@ else
     ok "all $nhidden defined globals are HIDDEN, none DEFAULT"
   else
     bad "visibility not applied: ${nhidden:-0} HIDDEN, ${ndefault:-0} DEFAULT"
+    echo "        in ${core#$INSTALLED/$TRIPLET/}"
+    # Which member objects the DEFAULT symbols are in, and a few of their names.
+    # A count on its own does not distinguish "the flag was dropped" from "some
+    # third-party code vendored into this archive annotates its API by hand",
+    # and those want opposite fixes.
+    echo "        archive members contributing DEFAULT globals (top 10):"
+    readelf -sW "$core" 2>/dev/null | awk '
+      /^File: / { m=$0; sub(/.*\(/, "", m); sub(/\)$/, "", m) }
+      $5=="GLOBAL" && $6=="DEFAULT" && $7!="UND" { cnt[m]++ }
+      END { for (k in cnt) printf "%8d  %s\n", cnt[k], k }' \
+      | sort -rn | head -10 | sed 's/^/        /'
+    echo "        sample DEFAULT symbols:"
+    readelf -sW "$core" 2>/dev/null \
+      | awk '$5=="GLOBAL" && $6=="DEFAULT" && $7!="UND" {print $8}' \
+      | sort -u | head -8 | { c++filt 2>/dev/null || cat; } | cut -c1-110 | sed 's/^/          /'
   fi
 fi
 
