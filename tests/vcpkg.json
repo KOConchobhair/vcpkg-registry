@@ -33,7 +33,10 @@
         "ffmpeg",
         "ffprobe",
         "openh264",
-        "openssl"
+        {
+          "name": "openssl",
+          "platform": "linux | android"
+        }
       ]
     },
     {

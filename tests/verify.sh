@@ -334,6 +334,46 @@ else
                    || bad "links ICU: $(echo $qt_icu | tr '\n' ' ')"
 fi
 
+# FFmpeg gets the same per-platform TLS backend as Qt, but by a different route:
+# its backend is compiled in rather than loaded as a plugin, and the port selects
+# it from the *absence* of the openssl feature -
+#
+#   if("openssl" IN_LIST FEATURES)  --enable-openssl
+#   else()                          --disable-openssl, then --enable-schannel on
+#                                   Windows and --enable-securetransport on
+#                                   macOS and iOS
+#
+# so tests/vcpkg.json asks for openssl only on "linux | android", the two
+# platforms with no native stack. Nothing is a plugin here, so the evidence is
+# what libavformat links: OpenSSL sonames on the OpenSSL platforms, Apple's
+# Security framework on the Apple ones.
+echo "ffmpeg TLS backend must match the platform:"
+avformat=$(match "${LIBPFX}avformat.$SHARED_EXT" "${LIBPFX}avformat.$STATIC_EXT" | head -1)
+if [ -z "$avformat" ]; then
+  bad "no libavformat to inspect"
+elif [ "$OS" = windows ]; then
+  skip "schannel is expected; no reliable link-inspection tool on a bash Windows runner"
+elif [ "$OS" = ios ]; then
+  # Static archive: otool -L says nothing useful, but an undefined SSLCreate
+  # symbol is the SecureTransport API being referenced.
+  st=$(nm "$avformat" 2>/dev/null | grep -c "U _SSL\(Create\|SetIOFuncs\|HandshakeS\)")
+  [ "${st:-0}" -gt 0 ] && ok "references SecureTransport ($st undefined SSL* symbols)" \
+                       || bad "no SecureTransport symbols - the platform's TLS backend is missing"
+else
+  ff_ssl=$(needed_libs "$avformat" | grep -E 'libssl|libcrypto' | sort -u | tr '\n' ' ')
+  ff_sec=$(needed_libs "$avformat" | grep -c Security)
+  case "$OS" in
+    linux|android)
+      [ -n "$ff_ssl" ] && ok "links OpenSSL: $ff_ssl" \
+                       || bad "links no OpenSSL - the openssl feature did not reach this platform" ;;
+    osx)
+      [ "${ff_sec:-0}" -gt 0 ] && ok "links Security.framework (securetransport)" \
+                               || bad "no Security.framework - securetransport was not enabled"
+      [ -z "$ff_ssl" ] && ok "and no OpenSSL, as intended" \
+                       || bad "also links $ff_ssl - openssl leaked in and wins over securetransport" ;;
+  esac
+fi
+
 echo
 if [ "$fail" = 0 ]; then
   if [ "$skipped" -gt 0 ]; then
