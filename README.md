@@ -515,17 +515,17 @@ dependency scripts:
   `linux_x64` and `linux_x64_legacy` share one preset. Neither `build_qt6.sh` nor
   `build_opencv.sh` passes `-march`, `CPU_BASELINE` or anything similar.
 
-Two shipped targets **would** need a triplet that does not exist here yet:
+Those two gaps are now closed, along with two targets that were not in the
+shipping list but are wanted: `arm-android` (armeabi-v7a, legacy devices) and
+32-bit ARM Linux for embedded boards. Each needed a triplet and a CI leg and no
+port changes at all, which is the useful part — the simulator and the emulator
+differ from the device targets by SDK and ABI, not by anything this registry
+customizes, and `verify.sh` handled all three without modification.
 
-| SDK artifact | Triplet needed | Upstream has it |
-| --- | --- | --- |
-| `roc-iphonesimulator-arm64` | `arm64-ios-simulator` | yes, community |
-| `roc-android-x64` | `x64-android` | yes, community |
+`arm-linux` is tracked separately: unlike the others it needs a cross toolchain
+that no runner ships, so it is not a variant of an existing leg.
 
-Both are additive — a triplet file plus a CI leg, no port changes — because the
-simulator and the emulator differ from the device targets by SDK and ABI, not by
-anything this registry customizes. `roc-web` (WebAssembly) is a larger question
-and is not covered at all.
+`roc-web` (WebAssembly) is a larger question and is not covered at all.
 
 ### Remaining gaps
 
@@ -672,6 +672,9 @@ repositories:
 | `x64-windows` | `windows-2022` | — |
 | `arm64-android` | `ubuntu-22.04` | `x64-linux` |
 | `arm64-ios` | `macos-14` | `arm64-osx` |
+| `arm64-ios-simulator` | `macos-14` | `arm64-osx` |
+| `x64-android` | `ubuntu-22.04` | `x64-linux` |
+| `arm-android` | `ubuntu-22.04` | `x64-linux` |
 
 The last two are cross builds, so the host triplet is the machine doing the
 building — Android and iOS binaries cannot run on the runner, and vcpkg needs host

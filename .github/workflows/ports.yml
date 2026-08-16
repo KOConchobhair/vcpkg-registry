@@ -54,6 +54,12 @@ jobs:
           # ANDROID_NDK_HOME comes from the runner image itself; no step sets it.
           - { runner: ubuntu-22.04, triplet: arm64-android, host_triplet: x64-linux }
           - { runner: macos-14, triplet: arm64-ios, host_triplet: arm64-osx }
+          # The remaining shipped SDK targets. The simulator and the emulator are
+          # SDK/ABI variants of the two above, not new platforms, so they need no
+          # port changes - see "What this registry deliberately does not cover".
+          - { runner: macos-14, triplet: arm64-ios-simulator, host_triplet: arm64-osx }
+          - { runner: ubuntu-22.04, triplet: x64-android, host_triplet: x64-linux }
+          - { runner: ubuntu-22.04, triplet: arm-android, host_triplet: x64-linux }
     defaults:
       run:
         # Git Bash on Windows, so tests/run.sh is the single implementation
