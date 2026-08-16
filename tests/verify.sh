@@ -186,17 +186,9 @@ done
 # on osx, and cups -> widgets -> gui -> opengl put all three in every build; this
 # registry's qtbase drops that (6.11.1#3), so the same assertion holds everywhere.
 echo "qtbase libraries that must NOT be built:"
-for m in Gui Widgets Sql Test DBus OpenGL; do
+for m in Gui Widgets Sql Test DBus OpenGL Xml; do
   have_qt "$m" && bad "Qt6$m present, should be excluded" || ok "Qt6$m absent"
 done
-
-# Asserted present, not absent. build_qt6.sh passes -no-feature-xml, but the port
-# hard-enables FEATURE_xml because moc is built from it - the one Qt parity gap
-# the README records. Pinning it here means an upstream change shows up as a test
-# result rather than as a surprise.
-echo "known parity gap: Qt xml cannot be disabled, so Qt6Xml is expected:"
-have_qt Xml && ok "Qt6Xml present, as documented" \
-  || bad "Qt6Xml absent - upstream may have made FEATURE_xml optional; update the README"
 
 # macOS is the only platform where the framework feature applies: qtbase declares it
 # "osx & !static", so it needs the dynamic linkage arm64-osx gives qtbase. iOS gets

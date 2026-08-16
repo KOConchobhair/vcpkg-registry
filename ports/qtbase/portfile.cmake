@@ -102,7 +102,14 @@ FEATURES
     "sql"                 FEATURE_sql
     "widgets"             FEATURE_widgets
     "windeployqt"         FEATURE_windeployqt
-    #"xml"                 FEATURE_xml  # Required to build moc
+    # ROC: begin - was commented out with "Required to build moc", and forced on
+    # unconditionally below. moc does not link QtXml: src/tools/moc/CMakeLists.txt
+    # builds it against Bootstrap, and qt_feature("xml") in qtbase's configure.cmake
+    # is the QtXml *module* (QDomDocument), not the QXmlStream that Bootstrap
+    # carries from QtCore. ci/build_qt6.sh builds production Qt with
+    # -no-feature-xml, which is the same configure this reaches.
+    "xml"                 FEATURE_xml
+    # ROC: end
     "testlib"             FEATURE_testlib
     "zstd"                CMAKE_REQUIRE_FIND_PACKAGE_zstd
     ${require_features}
@@ -112,7 +119,6 @@ INVERTED_FEATURES
     )
 
 list(APPEND FEATURE_OPTIONS -DCMAKE_DISABLE_FIND_PACKAGE_Libudev:BOOL=ON)
-list(APPEND FEATURE_OPTIONS -DFEATURE_xml:BOOL=ON)
 
 if("dbus" IN_LIST FEATURES AND VCPKG_TARGET_IS_LINUX)
   list(APPEND FEATURE_OPTIONS -DINPUT_dbus=linked)

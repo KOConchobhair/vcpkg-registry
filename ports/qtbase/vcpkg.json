@@ -1,7 +1,7 @@
 {
   "name": "qtbase",
   "version": "6.11.1",
-  "port-version": 3,
+  "port-version": 4,
   "description": "Qt Base (Core, Gui, Widgets, Network, ...)",
   "homepage": "https://www.qt.io/",
   "license": null,
@@ -132,6 +132,7 @@
       "name": "xcb-xlib",
       "platform": "linux"
     },
+    "xml",
     {
       "name": "xrender",
       "platform": "linux"
@@ -726,6 +727,9 @@
           ]
         }
       ]
+    },
+    "xml": {
+      "description": "Qt Xml module (QDomDocument). Note QXmlStreamReader/Writer live in Qt Core and are unaffected."
     },
     "xrender": {
       "description": "XRender for native painting",

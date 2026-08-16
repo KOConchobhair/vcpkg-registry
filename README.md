@@ -8,7 +8,7 @@ does not carry at all, plus the overlay triplets that go with them.
 
 | Port | Upstream | Why it is here |
 | ---- | -------- | -------------- |
-| `qtbase` | 6.11.1#1 → **#3** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
+| `qtbase` | 6.11.1#1 → **#4** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
 | `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
@@ -280,6 +280,28 @@ build setting, so it is stated in `triplets/arm64-ios.cmake` too rather than lef
 implicit. Android keeps the rule: an APK ships `.so` files in `lib/<abi>/`, so
 dynamic is both achievable and honest there.
 
+### `-no-feature-xml` was blocked by a comment, not by moc
+
+The port had the feature line commented out and forced the value instead:
+
+```cmake
+#"xml"                 FEATURE_xml  # Required to build moc
+...
+list(APPEND FEATURE_OPTIONS -DFEATURE_xml:BOOL=ON)
+```
+
+The comment does not survive checking. `qt_feature("xml")` in qtbase's
+`configure.cmake` is labelled *"Provides the Qt Xml module"* — it is QDomDocument,
+not the `QXmlStreamReader`/`Writer` that live in Qt Core. And moc is not built
+against QtXml: `src/tools/moc/CMakeLists.txt` gives it `CORE_LIBRARY Bootstrap`,
+and Bootstrap carries its own copy of the Core xml-stream sources. The strongest
+evidence is external: `ci/build_qt6.sh` builds production Qt with
+`-no-feature-xml` and has done so for years.
+
+So 6.11.1#4 turns it into an ordinary feature, kept in `default-features` so
+nothing changes for a consumer who does not opt out. `verify.sh` moved `Qt6Xml`
+from *expected present* to the must-not-be-built list.
+
 ### Headless Qt on macOS needed a one-word port fix
 
 Everywhere else, `"default-features": false` plus an explicit feature list gets a
@@ -360,7 +382,7 @@ hand. What follows is the full accounting, including what does *not* match.
 | `-R /LONG/ENOUGH/TO/REPLACE` | triplet: `VCPKG_FIXUP_ELF_RPATH ON` |
 | `-nomake examples -nomake tests` | the port already does this |
 | `-qt-pcre`, `-qt-zlib` | the `pcre2` feature and the `zlib` dependency — vcpkg's builds rather than Qt's bundled copies |
-| `-no-feature-xml` | **not available.** The port forces `FEATURE_xml=ON` because moc needs it |
+| `-no-feature-xml` | **new `xml` feature** (6.11.1#4); in `default-features`, so `"default-features": false` drops Qt6Xml |
 
 ### OpenCV
 
@@ -454,9 +476,6 @@ consumer of these artifacts that never calls it, gets upstream's default pool.
 
 ### Remaining gaps
 
-- **`-no-feature-xml` (Qt).** The port hard-enables `FEATURE_xml` because moc is
-  built from it. Reaching parity would mean disabling xml for the target while
-  keeping it for the host build; not attempted.
 - **The `flatbuffers` package is still installed.** `WITH_FLATBUFFERS=OFF` stops
   OpenCV using it, but the port declares `flatbuffers` as a dependency of the `dnn`
   feature, so it is still built and still named by `find_dependency(flatbuffers
@@ -565,7 +584,7 @@ intermediate revisions:
 
 | Port | Upstream | Here |
 | ---- | -------- | ---- |
-| `qtbase` | 6.11.1#1 | 6.11.1#3 |
+| `qtbase` | 6.11.1#1 | 6.11.1#4 |
 | `opencv4` | 4.12.0#7 | 4.12.0#8 |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
