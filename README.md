@@ -191,6 +191,18 @@ individual feature, not just on the dependency as a whole:
 
 One entry, three platforms, no port-side defaults needed.
 
+### The top-level `openssl` dependency is deliberate
+
+`tests/vcpkg.json` lists a bare, unqualified `"openssl"` alongside the two
+platform-qualified ones. It is **not** left over from Qt or FFmpeg: it stands for
+the consuming SDK's own direct use of OpenSSL, which exists on every platform.
+
+This is worth stating because it now looks vestigial. Qt takes securetransport on
+Apple and schannel on Windows, and FFmpeg follows the same split, so on macOS and
+Windows nothing else in the graph asks for OpenSSL — and it is still built there,
+by design. Qualifying or deleting that line would drop OpenSSL from the macOS,
+Windows and iOS trees and break a consumer that links it directly.
+
 ### Why `openssl-runtime` and not plain `openssl` on Linux
 
 `openssl-runtime` is orthogonal to the three backends above: it does not choose a
@@ -301,6 +313,16 @@ evidence is external: `ci/build_qt6.sh` builds production Qt with
 So 6.11.1#4 turns it into an ordinary feature, kept in `default-features` so
 nothing changes for a consumer who does not opt out. `verify.sh` moved `Qt6Xml`
 from *expected present* to the must-not-be-built list.
+
+Measured on `x64-linux`: the resolved set is now
+`[async-io, concurrent, core, dnslookup, doubleconversion, future, ioring,
+network, openssl, openssl-runtime, pcre2, thread]`, and `libQt6Xml` appears
+nowhere in the installed tree.
+
+`xml` rides on the consumer's `gui` feature instead, alongside `gui`, `sql`,
+`sql-sqlite` and `widgets`. That feature is already scoped `!ios & !android` and
+exists only for internal development tooling, so QDomDocument follows the same
+desktop-only path and never reaches the shipped mobile package.
 
 ### Headless Qt on macOS needed a one-word port fix
 
