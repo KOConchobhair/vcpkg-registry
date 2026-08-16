@@ -36,9 +36,10 @@ There is no classic-mode path here and none is wanted.
   opencv4 modules that should exist do and the trimmed ones don't, opencv is built
   with hidden visibility, the Qt modules likewise, and the OpenSSL TLS plugin is
   in the mode the manifest selected — it reads `vcpkg.json` to decide whether to
-  expect `linked` or `runtime`, so it stays a real check either way. It also pins
-  the one known parity gap, `Qt6Xml`, as *expected present*, so an upstream change
-  there surfaces as a test result rather than a surprise.
+  expect `linked` or `runtime`, so it stays a real check either way. `Qt6Xml` is
+  now on the must-not-be-built list with the rest: it used to be pinned as
+  *expected present* because the port forced `FEATURE_xml=ON`, which 6.11.1#4
+  ends.
 
 ## In CI
 
@@ -64,8 +65,9 @@ plugin — `qopensslbackend`, `qsecuretransportbackend`, `qschannelbackend`. Che
 that cannot be expressed on a platform print `skip` and are counted, rather than
 silently passing.
 
-**Only `arm64-linux` has been run.** The macOS and Windows legs are written but
-unexercised — nothing here can build them — so expect first-run fixups there.
+All six legs are green in CI and stay that way on every push. `arm64-linux` is
+additionally exercised locally, in the container, which is the only environment
+that can validate `apt-packages.txt` — see below.
 
 System packages come from `apt-packages.txt`, the same list `Dockerfile` uses, so
 the container and the runners cannot drift. The binary cache in CI is a NuGet feed
