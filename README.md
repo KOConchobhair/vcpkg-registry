@@ -591,22 +591,27 @@ is no classic-mode path.
 
 ### Binary caching
 
-Two layers, deliberately, and the second is additive rather than a replacement.
+A NuGet feed on GitHub Packages, and nothing else. `tests/run.sh` configures it
+rather than the workflow, because the `nuget.exe` involved is vcpkg's own and
+vcpkg does not exist until `run.sh` has bootstrapped it. It is enabled only when
+`VCPKG_NUGET_FEED` and `VCPKG_NUGET_TOKEN` are both set, so local runs fall back
+to `VCPKG_DEFAULT_BINARY_CACHE` untouched. In CI the source list is prefixed with
+`clear`, which drops the default files provider — with nothing persisting that
+directory between runs, leaving it on would write a zip of every restored package
+to runner disk for no one to read.
 
-**A per-triplet Actions cache** of `$VCPKG_DEFAULT_BINARY_CACHE` and the downloads
-directory, keyed on `hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json')`. The
-restored directory holds one zip per package named by its own ABI hash, so even a
-stale snapshot yields a hit for every package whose ABI has not moved — that is
-what makes a plain directory cache behave like a per-package one on the read side.
-Restore and save are separate steps so a leg that fails late still keeps what it
-built.
+There used to be a per-triplet `actions/cache` layer as well. It was removed once
+the feed was measured, in both directions, on every leg:
 
-**A NuGet feed on GitHub Packages**, configured in `tests/run.sh` rather than in
-the workflow, because the `nuget.exe` involved is vcpkg's own and vcpkg does not
-exist until `run.sh` has bootstrapped it. It is enabled only when
-`VCPKG_NUGET_FEED` and `VCPKG_NUGET_TOKEN` are both set, so local runs are
-unaffected. `VCPKG_BINARY_SOURCES` entries are additive unless the list starts with
-`clear`, so the Actions cache above keeps working unchanged.
+| Leg | Cold, empty feed | Cold, warm feed | Restored from NuGet |
+| --- | ---------------- | --------------- | ------------------- |
+| `x64-linux` | 27 min | 1 min | 33 packages in 13 s |
+| `arm64-linux` | 16 min | 1 min | 33 packages in 11 s |
+| `x64-windows` | 42 min | 2 min | 30 packages in 7 s |
+| `arm64-android` | 28 min | 2 min | 39 packages in 24 s |
+
+Nothing was compiled on the warm run. `x64-windows` is the clearest case: 7
+seconds against a 2.3 GB Actions cache download.
 
 Three things about GitHub Packages worth knowing before relying on it:
 
@@ -619,40 +624,23 @@ Three things about GitHub Packages worth knowing before relying on it:
   exist — they need no token at all.
 - It never runs on `pull_request`. A fork PR gets a read-only token, and asking
   for `readwrite` there would fail the leg on something other than the thing under
-  test. Every other event runs it on all six legs — the `ubuntu-22.04` images ship
-  the `mono` that `nuget.exe` needs, Windows runs it directly, and the macOS
-  prerequisites step installs it.
+  test. `nuget.exe` needs `mono` off Windows: the `ubuntu-22.04` images ship it —
+  confirmed on x64 and arm64, which is documented nowhere — and the macOS
+  prerequisites step installs it via brew.
 
-**vcpkg only uploads packages it builds.** Restored ones are not re-published, so
-while the Actions cache is warm nothing reaches NuGet — the first run with both
-layers enabled restored all 33 packages from the Actions cache and pushed none.
-That is why `workflow_dispatch` takes a `seed_binary_cache` input: it skips the
-Actions cache restore so everything rebuilds and populates the feed, without
-deleting the caches that make ordinary runs fast.
-
-Both directions are now measured. Two `seed_binary_cache` runs, identical except
-that the feed had content the second time:
-
-| Leg | Cold, empty feed | Cold, warm feed | Restored from NuGet |
-| --- | ---------------- | --------------- | ------------------- |
-| `x64-linux` | 27 min | 1 min | 33 packages in 13 s |
-| `arm64-linux` | 16 min | 1 min | 33 packages in 11 s |
-| `x64-windows` | 42 min | 2 min | 30 packages in 7 s |
-| `arm64-android` | 28 min | 2 min | 39 packages in 24 s |
-
-Nothing was compiled on the second run. The two macOS legs have no NuGet and cold
-built in both, which is what rules out any other run-to-run explanation.
-
-Two things still stand between this and retiring the Actions cache: the macOS legs
-depend on it entirely, and the Actions cache is consulted first, so it masks the
-feed on ordinary runs. Dropping it means enabling NuGet on macOS and prefixing
-`VCPKG_BINARY_SOURCES` with `clear`.
+Two consequences of having only one layer. Source tarballs are no longer cached,
+so a port change re-downloads the sources for that port and its dependents; in the
+steady state nothing is downloaded at all, because a restored package needs no
+source. And the feed grows by one package per ABI hash forever — GitHub Packages
+has no documented eviction policy, unlike the Actions cache's 10 GB LRU, so
+pruning stale packages is a job someone now owns.
 
 Pushing the same package twice is a `409 Conflict` that vcpkg logs as an error and
-continues past. It happens because `arm64-android` builds with `x64-linux` as its
-host triplet, so it races the `x64-linux` leg to publish the shared host packages.
-vcpkg builds the `nuget push` command itself and does not pass `-SkipDuplicate`,
-so this is noise rather than something configurable.
+continues past. It happens because the cross legs build with a host triplet that
+another leg is also building — `arm64-android` with `x64-linux`, `arm64-ios` with
+`arm64-osx` — so they race to publish the shared host packages. vcpkg builds the
+`nuget push` command itself and does not pass `-SkipDuplicate`, so this is noise
+rather than something configurable.
 
 ### Build provenance
 

@@ -68,9 +68,11 @@ silently passing.
 unexercised — nothing here can build them — so expect first-run fixups there.
 
 System packages come from `apt-packages.txt`, the same list `Dockerfile` uses, so
-the container and the runners cannot drift. `actions/cache` holds the vcpkg binary
-cache and downloads, keyed on `ports/**`, `triplets/**` and `tests/vcpkg.json` —
-everything that feeds an ABI hash — with `restore-keys` seeding from the last run.
+the container and the runners cannot drift. The binary cache in CI is a NuGet feed
+on GitHub Packages, configured by `run.sh` when `VCPKG_NUGET_FEED` and
+`VCPKG_NUGET_TOKEN` are set; there is no `actions/cache` layer any more. Locally
+neither variable is set, so the plain `VCPKG_DEFAULT_BINARY_CACHE` directory is
+used — see "Binary caching" in the top-level README.
 
 **Build x64 in CI, not locally on Apple silicon.** x64 there runs under Rosetta,
 which intermittently leaves cmake asleep in `ep_poll` waiting on a child that

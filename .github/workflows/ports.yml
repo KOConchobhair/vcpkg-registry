@@ -15,15 +15,6 @@ on:
     branches: [trunk]
   pull_request:
   workflow_dispatch:
-    inputs:
-      seed_binary_cache:
-        description: >-
-          Skip the Actions cache restore so every package is rebuilt and pushed to
-          the NuGet feed. vcpkg only uploads what it builds, so with a warm Actions
-          cache nothing reaches NuGet - this is how to populate it on purpose,
-          without deleting the caches that make ordinary runs fast.
-        type: boolean
-        default: false
 
 # Declaring any permission replaces the whole default set, so contents: read has
 # to be spelled out or checkout loses its token. packages is for the NuGet binary
@@ -113,29 +104,10 @@ jobs:
       # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
       # acquires nasm and perl itself when a port asks for them.
 
-      # Keyed on everything that affects an ABI hash, so a port or triplet edit
-      # invalidates cleanly while restore-keys still seeds from the last run. The
-      # restored directory holds one zip per package, each named by its own ABI
-      # hash, so even a stale snapshot yields a hit for every package whose ABI has
-      # not moved - which is what makes this behave like a per-package cache on the
-      # read side.
-      #
-      # Split into restore + save deliberately. The combined action only writes the
-      # cache when the job succeeds, so a leg that fails late - as the mobile ones
-      # have been doing after ten minutes of compiling - threw away everything it
-      # built and started from nothing next run.
-      - name: Restore vcpkg caches
-        id: vcpkg-cache
-        if: ${{ !inputs.seed_binary_cache }}
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ${{ runner.temp }}/cache
-            ${{ runner.temp }}/downloads
-          key: vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-${{ hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json') }}
-          restore-keys: |
-            vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-
-            vcpkg-${{ matrix.triplet }}-
+      # No actions/cache step. The GitHub Packages NuGet feed is the binary cache
+      # now - see the "Binary caching" section of the README for the measurements
+      # that justified dropping this layer. run.sh prefixes VCPKG_BINARY_SOURCES
+      # with "clear", so the local files provider is off here too.
 
       # Runs tests/verify.sh on success; that is where the real assertions live.
       - name: Build and verify
@@ -155,23 +127,11 @@ jobs:
           # Push and workflow_dispatch, never pull_request: a fork PR gets a
           # read-only token, and asking for readwrite there would fail the leg on
           # something that is not the thing under test. workflow_dispatch is
-          # included so a seed_binary_cache run can populate the feed. Empty on the
-          # macOS legs (see matrix), and an empty feed switches the block in
-          # run.sh off entirely.
+          # included so the feed can be refreshed by hand. An empty feed switches
+          # the block in run.sh off entirely.
           VCPKG_NUGET_FEED: ${{ (matrix.nuget && github.event_name != 'pull_request') && format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) || '' }}
           VCPKG_NUGET_TOKEN: ${{ (matrix.nuget && github.event_name != 'pull_request') && secrets.GITHUB_TOKEN || '' }}
           VCPKG_NUGET_USER: ${{ github.repository_owner }}
-
-      # Runs even when the build failed, so a partial leg keeps whatever it managed
-      # to build. Skipped on an exact key hit, where re-uploading would be pure cost.
-      - name: Save vcpkg caches
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ${{ runner.temp }}/cache
-            ${{ runner.temp }}/downloads
-          key: vcpkg-${{ matrix.triplet }}-${{ env.VCPKG_BASELINE }}-${{ hashFiles('ports/**', 'triplets/**', 'tests/vcpkg.json') }}
 
       - name: Installed tree
         if: always()

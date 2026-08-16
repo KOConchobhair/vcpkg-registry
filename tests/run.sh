@@ -11,8 +11,9 @@
 #   VCPKG_BASELINE                upstream commit to bootstrap the vcpkg tool at
 #   REGISTRY_HEAD                 commit the registry modes resolve against
 #
-# Optional, and only set in CI - a NuGet feed used as a second binary cache in
-# addition to VCPKG_DEFAULT_BINARY_CACHE, never instead of it:
+# Optional, and only set in CI - a NuGet feed used as the binary cache. When it is
+# configured it replaces the local files cache; without it, VCPKG_DEFAULT_BINARY_CACHE
+# is used as normal, which is what local runs do:
 #
 #   VCPKG_NUGET_FEED   feed index URL; enables the block when set with a token
 #   VCPKG_NUGET_TOKEN  password and API key for that feed
@@ -117,25 +118,29 @@ if [ ! -x "$VCPKG" ]; then
   fi
 fi
 
-# Optional NuGet binary cache, layered on top of the local files cache rather than
-# replacing it. VCPKG_BINARY_SOURCES entries are additive unless the list starts
-# with "clear", so $VCPKG_DEFAULT_BINARY_CACHE keeps working and the workflow's
-# actions/cache of that directory is untouched.
+# NuGet binary cache. In CI this is the only binary cache: the list is prefixed
+# with "clear", which drops the default files provider.
+#
+# That is deliberate rather than cosmetic. Nothing persists
+# $VCPKG_DEFAULT_BINARY_CACHE between runs any more, so leaving the files provider
+# on would write a zip of every restored package to runner disk for no one to read
+# - real cost on the legs that already have to reclaim space before building.
 #
 # This lives here rather than in the workflow because the nuget.exe involved is
 # vcpkg's own, and vcpkg does not exist until the bootstrap above has run. Both
-# variables are absent on a local run, so this is skipped entirely there.
+# variables are absent on a local run, which skips the block entirely and leaves
+# the local files cache in charge - tests/build.sh depends on that.
 if [ -n "${VCPKG_NUGET_FEED:-}" ] && [ -n "${VCPKG_NUGET_TOKEN:-}" ]; then
   echo "=== configuring NuGet binary cache: $VCPKG_NUGET_FEED ==="
   NUGET="$("$VCPKG" fetch nuget | tail -n 1)"
   # nuget.exe is a .NET assembly. Windows runs it directly; everywhere else needs
-  # mono, which is why this is not enabled on every leg yet.
+  # mono - preinstalled on the ubuntu-22.04 images, brew-installed on macOS.
   if [ "$IS_WINDOWS" = 1 ]; then
     run_nuget() { "$NUGET" "$@"; }
   else
     if ! command -v mono >/dev/null 2>&1; then
       echo "error: mono is required to run nuget.exe on $(uname -s), and is not installed." >&2
-      echo "       ubuntu-22.04 ships it; newer images and the macOS runners may not." >&2
+      echo "       ubuntu-22.04 ships it; newer ubuntu images do not, and macOS needs brew." >&2
       echo "       Add mono-complete to tests/apt-packages.txt, or drop nuget from this" >&2
       echo "       leg's matrix entry in .github/workflows/ports.yml." >&2
       exit 1
@@ -152,7 +157,7 @@ if [ -n "${VCPKG_NUGET_FEED:-}" ] && [ -n "${VCPKG_NUGET_TOKEN:-}" ]; then
     -UserName "${VCPKG_NUGET_USER:-vcpkg}" \
     -Password "$VCPKG_NUGET_TOKEN"
   run_nuget setapikey "$VCPKG_NUGET_TOKEN" -Source "$VCPKG_NUGET_FEED"
-  export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:+${VCPKG_BINARY_SOURCES};}nuget,${VCPKG_NUGET_FEED},${VCPKG_NUGET_MODE:-readwrite}"
+  export VCPKG_BINARY_SOURCES="clear;nuget,${VCPKG_NUGET_FEED},${VCPKG_NUGET_MODE:-readwrite}"
   echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES"
 fi
 
