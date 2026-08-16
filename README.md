@@ -496,6 +496,37 @@ that sequential execution is no longer guaranteed by the build on those targets:
 anything that touches OpenCV before `setNumThreads(0)` takes effect, or any other
 consumer of these artifacts that never calls it, gets upstream's default pool.
 
+### What this registry deliberately does not cover
+
+Audited against everything in `rankone-ffmpeg-jetson/ci`, not just the two
+dependency scripts:
+
+- **`build_doxygen.sh`, `build_mono.sh`, `build_swig.sh`** build host tooling —
+  Doxygen for docs, Mono for the C# bindings runtime, SWIG for generating them.
+  They are not libraries the SDK links, so they are out of scope here. (vcpkg has
+  `doxygen` and `swig` ports if that ever changes.) Worth knowing: the
+  `flex`/`bison` that used to sit in `tests/apt-packages.txt` are Doxygen's
+  requirement, not vcpkg's — that is how they got there.
+- **`Toolchain-Ubuntu-gnueabihf.cmake`** is a sample file for 32-bit ARM. No
+  shipped SDK artifact is armhf, so there is no `arm-linux` triplet here.
+- **CPU-baseline flavours** — `fma3` vs `legacy` on x64, `v8a` vs `v8.2a` on
+  arm64 — are not triplets. `master.cfg` names no vcpkg triplet at all: those
+  variants are buildbot workers and the SDK's own CMake presets, and
+  `linux_x64` and `linux_x64_legacy` share one preset. Neither `build_qt6.sh` nor
+  `build_opencv.sh` passes `-march`, `CPU_BASELINE` or anything similar.
+
+Two shipped targets **would** need a triplet that does not exist here yet:
+
+| SDK artifact | Triplet needed | Upstream has it |
+| --- | --- | --- |
+| `roc-iphonesimulator-arm64` | `arm64-ios-simulator` | yes, community |
+| `roc-android-x64` | `x64-android` | yes, community |
+
+Both are additive — a triplet file plus a CI leg, no port changes — because the
+simulator and the emulator differ from the device targets by SDK and ABI, not by
+anything this registry customizes. `roc-web` (WebAssembly) is a larger question
+and is not covered at all.
+
 ### Remaining gaps
 
 - **The `flatbuffers` package is still installed.** `WITH_FLATBUFFERS=OFF` stops
@@ -572,7 +603,7 @@ other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 | # | Change | Why |
 | - | ------ | --- |
 | 1 | **Add a `registries` array to the existing `vcpkg-configuration` block**, with this registry and `packages`: `ffmpeg`, `jetson-multimedia-api`, `jetson-nvmpi`, `opencv4`, `qtbase`. Keep `builtin-baseline` as it is. | Nothing here is used otherwise. That block already holds `overlay-triplets`, so this extends it rather than adding it. |
-| 2 | **Delete the `opencv4` override** (`4.8.0#22`) | This registry serves 4.12.0#8. An override naming a version the authoritative registry does not have fails to resolve. |
+| 2 | **Delete the `opencv4` override** (`4.8.0#22`) | This registry serves 4.12.0#9. An override naming a version the authoritative registry does not have fails to resolve. |
 | 3 | **Delete the `ffmpeg` override** (`7.0.2#7`) | Required, not merely redundant: this registry serves `7.0.2#8`, so an override naming `#7` no longer resolves. It was renumbered precisely so a modified port stops claiming upstream's identifier. |
 | 4 | **Add `features2d`, `intrinsics`, `fs`, `thread` to the `opencv4` features** | The four silent ones. `features2d` is newly a feature; the other three are upstream defaults that the existing `"default-features": false` was already discarding. `intrinsics` is the expensive one — it maps to `CV_ENABLE_INTRINSICS`, so without it OpenCV has no SSE/AVX or NEON code paths at all. |
 | 5 | **Add `"default-features": false` to the `qtbase` edge inside the `gui` feature** | The most consequential line in this list. Without it, enabling `gui` discards the headless configuration entirely and unions in `icu`, `libpq`, `testlib`, `freetype`, `harfbuzz` and the X11 stack. Measured under "`default-features: false` has to be on *every* edge". |
