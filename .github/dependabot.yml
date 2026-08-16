@@ -17,7 +17,7 @@ updates:
     # The directory holding vcpkg.json, not the file itself.
     directory: "/tests"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     open-pull-requests-limit: 0
     labels:
       - "dependencies"
