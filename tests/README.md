@@ -56,7 +56,7 @@ registry plus `verify.sh`. Every runner image used is free for public repositori
 | `arm64-ios` | `macos-14` | cross, host `arm64-osx`; everything static |
 | `arm64-ios-simulator` | `macos-14` | cross, host `arm64-osx`; simulator SDK |
 | `x64-android` | `ubuntu-22.04` | cross, host `x64-linux`; emulator |
-| `arm-android` | `ubuntu-22.04` | cross, host `x64-linux`; armeabi-v7a, NEON off |
+| `arm-android` | `ubuntu-22.04` | cross, host `x64-linux`; armeabi-v7a, NEON forced on by NDK r27 |
 
 `fail-fast: false`, so one platform breaking still reports the others. There is no
 separate resolve-only job — resolution happens before any compiling, so a broken

@@ -39,11 +39,20 @@ endif()
 set(VCPKG_CMAKE_SYSTEM_NAME Android)
 set(VCPKG_CMAKE_SYSTEM_VERSION 28)
 
-# ANDROID_ARM_NEON=OFF is upstream's default for this ABI and is kept, but it is a
-# real performance decision rather than a formality: NEON is optional in the
-# armeabi-v7a ABI, so the compiler cannot assume it, and OpenCV loses every
-# hand-vectorised path. Every Android device since roughly 2012 has NEON. If this
-# target is for hardware that new, flip it to ON - it is one word here.
+# Upstream's arm-android triplet also passes -DANDROID_ARM_NEON=OFF. That is
+# dropped here because it no longer builds: NDK r27's
+# build/cmake/android-legacy.toolchain.cmake:171 fails outright with
+#
+#     CMake Error: Disabling Neon is no longer supported
+#
+# and vcpkg cannot even get through compiler detection. The runner ships NDK
+# 27.3.13750724, so upstream's triplet is broken against any current NDK - worth
+# sending back.
+#
+# Losing the flag is no loss anyway. NEON is optional in the armeabi-v7a ABI, so
+# without it the compiler cannot assume it and OpenCV gives up every
+# hand-vectorised path; every Android device since roughly 2012 has it. The NDK
+# forcing the issue only makes the better default mandatory.
 set(VCPKG_MAKE_BUILD_TRIPLET "--host=armv7a-linux-androideabi")
-set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=armeabi-v7a -DANDROID_ARM_NEON=OFF)
+set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=armeabi-v7a)
 set(VCPKG_BUILD_TYPE release)
