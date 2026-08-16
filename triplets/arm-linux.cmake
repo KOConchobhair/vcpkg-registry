@@ -18,12 +18,28 @@ if(PORT MATCHES "^(qtbase|ffmpeg|openssl|numactl)$")
     set(VCPKG_FIXUP_ELF_RPATH ON)
 endif()
 
-# The i.MX6 is a Cortex-A9: ARMv7-A with NEON. Ubuntu's arm-linux-gnueabihf
-# defaults to vfpv3-d16 and no NEON, which would cost OpenCV every hand-vectorised
-# path on a chip that has the unit - the same trap the Android armeabi-v7a triplet
-# used to fall into. Set explicitly rather than inherited.
-set(VCPKG_C_FLAGS "-march=armv7-a -mfpu=neon")
-set(VCPKG_CXX_FLAGS "-march=armv7-a -mfpu=neon")
+# Matched to how ROC already builds 32-bit ARM, rather than invented here.
+# scripts/ClientEvaluation/Axis/AxisToolchain.cmake - the live Axis camera target -
+# uses arm-linux-gnueabihf-gcc with "-mthumb -mfpu=neon -mfloat-abi=hard
+# -mcpu=cortex-a9", and ci/legacy_master.cfg:259, the historic 32-bit Linux SDK,
+# used the same compiler with "-march=armv7-a -mfpu=neon
+# -funsafe-math-optimizations". Both agree on the compiler and on NEON.
+#
+# -mcpu=cortex-a9 rather than -march=armv7-a because that is the i.MX6's core and
+# Axis's too; it implies armv7-a and adds scheduling for the part, and the output
+# still runs on any armv7-a with NEON. Change it if this triplet is ever pointed at
+# a different core.
+#
+# -mfpu=neon is the load-bearing one. Ubuntu's arm-linux-gnueabihf defaults to
+# vfpv3-d16 with no NEON, which would cost OpenCV every hand-vectorised path on a
+# chip that has the unit - the same trap the Android armeabi-v7a triplet fell into,
+# reached from the other side.
+#
+# Not carried over: -funsafe-math-optimizations from the legacy build. It permits
+# floating-point reassociation, so it can change numerical results - not something
+# to switch on for a recognition pipeline without someone deciding to.
+set(VCPKG_C_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard")
+set(VCPKG_CXX_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard")
 
 # Parity with ci/build_opencv.sh, and the debug-info fix - see arm64-linux.cmake
 # for the measurements behind the second one, and for why WITH_PTHREADS_PF=OFF
