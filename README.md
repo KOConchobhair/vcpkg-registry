@@ -8,8 +8,8 @@ does not carry at all, plus the overlay triplets that go with them.
 
 | Port | Upstream | Why it is here |
 | ---- | -------- | -------------- |
-| `qtbase` | 6.11.1#1 → **#2** | Adds the missing `schannel` TLS backend for Windows, and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it |
-| `opencv4` | 4.12.0#7 → **#8** | Makes six always-on modules selectable, so the module set can be cut down |
+| `qtbase` | 6.11.1#1 → **#3** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
+| `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
 | `jetson-nvmpi` | — | `libnvmpi`, the library behind FFmpeg's `*_nvmpi` codecs on Jetson |
@@ -228,10 +228,14 @@ tidy way).
 
 Retired, because the ports now cover them:
 
-- `-DWITH_CAROTENE=OFF` (arm64-linux, arm64-osx) — `carotene` is a feature here,
-  and any `"default-features": false` selection already leaves it off. The
-  original comment already said "fixed in 4.10.0#2".
-- `-DWITH_MSMF=OFF` (x64-windows) — likewise, `msmf` is a feature.
+- `-DWITH_CAROTENE=OFF` (arm64-linux, arm64-osx), `-DWITH_MSMF=OFF` (x64-windows)
+  and `WITH_DSHOW` — all three are **features** of this registry's opencv4, wired
+  through `vcpkg_check_features` (`portfile.cmake` lines 94, 131 and 108). That
+  matters more than "the feature exists": `vcpkg_check_features` emits the OFF form
+  as well as the ON form, so an unselected feature becomes an explicit
+  `-DWITH_CAROTENE=OFF` on the configure line rather than a default that could
+  change. `"default-features": false` therefore turns all three off by itself, and
+  a triplet flag would only add a second source of truth that could drift.
 
 Added, because it is a parity item that a port *cannot* express — visibility is a
 compiler flag:
@@ -276,11 +280,12 @@ build setting, so it is stated in `triplets/arm64-ios.cmake` too rather than lef
 implicit. Android keeps the rule: an APK ships `.so` files in `lib/<abi>/`, so
 dynamic is both achievable and honest there.
 
-### Headless Qt is not achievable on macOS
+### Headless Qt on macOS needed a one-word port fix
 
 Everywhere else, `"default-features": false` plus an explicit feature list gets a
-Qt with no GUI. macOS is the exception, and it is upstream's doing rather than a
-configuration mistake: the `qtbase` port **self-depends on `cups`** there —
+Qt with no GUI. macOS used to be the exception, and it was upstream's doing: the
+`qtbase` port **forced its own `cups` feature** there, at the top-level dependency
+list rather than behind any feature —
 
 ```json
 { "name": "qtbase", "default-features": false,
@@ -288,20 +293,37 @@ configuration mistake: the `qtbase` port **self-depends on `cups`** there —
 ```
 
 — and `cups` depends on `widgets`, which depends on `gui`. So `Qt6Gui`,
-`Qt6Widgets` and `Qt6OpenGL` are built on macOS no matter what the consumer asks
-for. Measured on `arm64-osx`, the resolved set is
-`[async-io, concurrent, core, cups, dnslookup, doubleconversion, framework, future,
-gui, network, opengl, pcre2, securetransport, thread, widgets]`.
+`Qt6Widgets` and `Qt6OpenGL` were built on macOS no matter what the consumer asked
+for.
 
-The other platforms are unaffected — the port's other self-dependencies are
-`["concurrent", "thread"]` on android and `["pcre2"]` on windows-static, neither of
-which reaches `gui`. So headless Qt works on Linux, Windows, Android and iOS, which
-covers every target where it was actually required.
+The telling detail is that **Linux has no such entry**, even though the `cups`
+feature is declared `supports: "linux | osx"`. Printing support is opt-in on Linux
+and was compulsory on macOS. That asymmetry is what marks it as an oversight rather
+than a requirement.
 
-`verify.sh` asserts those three as *expected present* on macOS rather than skipping
-them, so an upstream change to that self-dependency surfaces as a test result. The
-gui-flavour additivity check skips its "gui absent by default" half on macOS for the
-same reason.
+The fix in this registry (6.11.1#3) is to delete one word, leaving
+`"features": ["thread"]`. It is safe because the portfile already disables CUPS
+properly when the feature is off — `vcpkg_check_features` passes both
+`-DFEATURE_cups=OFF` and, through `INVERTED_FEATURES`,
+`-DCMAKE_DISABLE_FIND_PACKAGE_Cups=ON`, so Qt cannot autodetect a system CUPS
+behind the port's back. The likeliest history is that the forced dependency
+predates that guard and became redundant when it landed.
+
+Measured by resolving `arm64-osx` against this registry, the qtbase feature set is
+now
+
+```
+[async-io, concurrent, core, dnslookup, doubleconversion, framework,
+ future, network, pcre2, securetransport, thread]
+```
+
+with no `cups`, `gui`, `widgets` or `opengl`. Headless Qt now works on all six
+targets, and `verify.sh` asserts the same "must NOT be built" list everywhere
+instead of carrying a macOS exception.
+
+This is a one-word deletion against a stock port with no behaviour change for
+anyone who asks for `cups` explicitly, which makes it a strong upstream candidate —
+see "Proposing a change upstream".
 
 ### Frameworks
 
@@ -356,7 +378,9 @@ hand. What follows is the full accounting, including what does *not* match.
 | `BUILD_{JPEG,PNG,TIFF,WEBP,OPENEXR,OPENJPEG,PROTOBUF}=ON` | the vcpkg ports instead of OpenCV's bundled copies |
 | `-DCMAKE_CXX_FLAGS=-fvisibility=hidden` | triplet, on the three non-Windows triplets |
 | `WITH_PTHREADS_PF=OFF` | **deliberately not carried over** — see "OpenCV threading" |
-| `WITH_AVFOUNDATION=OFF` | **not exposed by the port**; force it from a triplet's `ADDITIONAL_BUILD_FLAGS` if it matters |
+| `WITH_AVFOUNDATION=OFF` | **not exposed by the port** — forced from every triplet's `ADDITIONAL_BUILD_FLAGS` |
+| `WITH_DSHOW=OFF` | `dshow` is a feature; `"default-features": false` makes vcpkg pass it as OFF |
+| `WITH_FLATBUFFERS=OFF` | the port ties it to `dnn` — forced from every triplet's `ADDITIONAL_BUILD_FLAGS` |
 
 The six new features are `features2d`, `flann`, `objdetect`, `photo`,
 `stitching` and `video`. All six are in `default-features`, so upstream
@@ -433,8 +457,11 @@ consumer of these artifacts that never calls it, gets upstream's default pool.
 - **`-no-feature-xml` (Qt).** The port hard-enables `FEATURE_xml` because moc is
   built from it. Reaching parity would mean disabling xml for the target while
   keeping it for the host build; not attempted.
-- **`WITH_FLATBUFFERS`.** The port ties this to `dnn`, so it is on wherever
-  `dnn` is; `build_opencv.sh` has it off. A superset — it adds TFLite import.
+- **The `flatbuffers` package is still installed.** `WITH_FLATBUFFERS=OFF` stops
+  OpenCV using it, but the port declares `flatbuffers` as a dependency of the `dnn`
+  feature, so it is still built and still named by `find_dependency(flatbuffers
+  CONFIG)` in the generated config. Removing that would mean changing the feature's
+  dependency list, which is a larger port change than the flag is worth.
 - **Versions differ.** These ports are OpenCV 4.12.0 and Qt 6.11.1, from the
   pinned baseline; the scripts build 4.8.1 and 6.8.2.
 
@@ -538,7 +565,7 @@ intermediate revisions:
 
 | Port | Upstream | Here |
 | ---- | -------- | ---- |
-| `qtbase` | 6.11.1#1 | 6.11.1#2 |
+| `qtbase` | 6.11.1#1 | 6.11.1#3 |
 | `opencv4` | 4.12.0#7 | 4.12.0#8 |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
