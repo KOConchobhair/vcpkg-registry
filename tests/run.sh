@@ -279,18 +279,12 @@ for line in sys.stdin:
   for f in gui widgets; do
     case " $gui " in *" $f "*) ;; *) echo "  FAIL  gui flavour is missing $f" >&2; return 1 ;; esac
   done
-  # Skipped on macOS: the qtbase port self-depends on cups there
-  # ("platform": "osx"), and cups -> widgets -> gui, so gui and widgets are in the
-  # base flavour whether or not anyone asked. Headless Qt is not achievable on
-  # macOS with this port; it is on linux, android, ios and windows.
-  case "$TRIPLET" in
-    *-osx*) echo "  skip  gui/widgets are unavoidable on macOS (port self-depends on cups)" ;;
-    *)
-      for f in gui widgets; do
-        case " $base " in *" $f "*) echo "  FAIL  $f present without the gui feature" >&2; return 1 ;; esac
-      done
-      ;;
-  esac
+  # Checked on every platform now. macOS used to be exempt because the qtbase port
+  # forced its own cups feature there and cups -> widgets -> gui put both in the
+  # base flavour; this registry's qtbase drops that (6.11.1#3).
+  for f in gui widgets; do
+    case " $base " in *" $f "*) echo "  FAIL  $f present without the gui feature" >&2; return 1 ;; esac
+  done
   echo "  ok    gui is additive: headless set intact, plus gui and widgets"
 }
 

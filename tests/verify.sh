@@ -182,27 +182,13 @@ for m in Core Network Concurrent; do
   have_qt "$m" && ok "Qt6$m" || bad "Qt6$m missing"
 done
 
-# macOS is the exception: the qtbase port self-depends on cups there
-# ("platform": "osx"), and cups -> widgets -> gui -> opengl, so those three arrive
-# whether or not anyone asked for them. Headless Qt is simply not achievable on
-# macOS with this port. Asserted as expected-present rather than skipped, so that
-# an upstream change to that self-dependency shows up as a test result.
-if [ "$OS" = osx ]; then
-  echo "qtbase GUI modules, unavoidable on macOS (port self-depends on cups):"
-  for m in Gui Widgets OpenGL; do
-    have_qt "$m" && ok "Qt6$m present, as expected on macOS" \
-      || bad "Qt6$m absent - the cups self-dependency may be gone; update the README"
-  done
-  echo "qtbase libraries that must NOT be built:"
-  for m in Sql Test DBus; do
-    have_qt "$m" && bad "Qt6$m present, should be excluded" || ok "Qt6$m absent"
-  done
-else
-  echo "qtbase libraries that must NOT be built:"
-  for m in Gui Widgets Sql Test DBus OpenGL; do
-    have_qt "$m" && bad "Qt6$m present, should be excluded" || ok "Qt6$m absent"
-  done
-fi
+# No macOS exception any more. The qtbase port used to force its own cups feature
+# on osx, and cups -> widgets -> gui -> opengl put all three in every build; this
+# registry's qtbase drops that (6.11.1#3), so the same assertion holds everywhere.
+echo "qtbase libraries that must NOT be built:"
+for m in Gui Widgets Sql Test DBus OpenGL; do
+  have_qt "$m" && bad "Qt6$m present, should be excluded" || ok "Qt6$m absent"
+done
 
 # Asserted present, not absent. build_qt6.sh passes -no-feature-xml, but the port
 # hard-enables FEATURE_xml because moc is built from it - the one Qt parity gap
