@@ -522,8 +522,18 @@ port changes at all, which is the useful part — the simulator and the emulator
 differ from the device targets by SDK and ABI, not by anything this registry
 customizes, and `verify.sh` handled all three without modification.
 
-`arm-linux` is tracked separately: unlike the others it needs a cross toolchain
-that no runner ships, so it is not a variant of an existing leg.
+`arm-linux` is the one that is not a variant of an existing leg. GitHub has no
+armv7 runner, so it cross-compiles with Ubuntu's `gcc-arm-linux-gnueabihf`, which
+the workflow installs for that leg alone — not through `tests/apt-packages.txt`,
+which is the container's contract and has no armhf consumer. The compiler is
+selected by a chainloaded toolchain file in `triplets/toolchains/`, the only one
+in this registry; Android and iOS get theirs from the vendor SDK instead.
+
+The i.MX6 is a Cortex-A9, so the triplet sets `-march=armv7-a -mfpu=neon`
+explicitly. Ubuntu's armhf gcc defaults to vfpv3-d16 with no NEON, which would
+cost OpenCV every hand-vectorised path on a chip that has the unit — the same
+trap the Android armeabi-v7a triplet fell into, arrived at from the opposite
+direction.
 
 `roc-web` (WebAssembly) is a larger question and is not covered at all.
 
@@ -675,6 +685,7 @@ repositories:
 | `arm64-ios-simulator` | `macos-14` | `arm64-osx` |
 | `x64-android` | `ubuntu-22.04` | `x64-linux` |
 | `arm-android` | `ubuntu-22.04` | `x64-linux` |
+| `arm-linux` | `ubuntu-22.04` | `x64-linux` |
 
 The last two are cross builds, so the host triplet is the machine doing the
 building — Android and iOS binaries cannot run on the runner, and vcpkg needs host

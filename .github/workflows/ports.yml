@@ -60,6 +60,10 @@ jobs:
           - { runner: macos-14, triplet: arm64-ios-simulator, host_triplet: arm64-osx }
           - { runner: ubuntu-22.04, triplet: x64-android, host_triplet: x64-linux }
           - { runner: ubuntu-22.04, triplet: arm-android, host_triplet: x64-linux }
+          # The only leg with no runner of its own architecture - armv7 hardware
+          # does not exist on GitHub - so it cross-compiles with Ubuntu's armhf gcc,
+          # installed below for this leg alone.
+          - { runner: ubuntu-22.04, triplet: arm-linux, host_triplet: x64-linux }
     defaults:
       run:
         # Git Bash on Windows, so tests/run.sh is the single implementation
@@ -95,6 +99,16 @@ jobs:
           sudo apt-get update -qq
           grep -v '^[[:space:]]*#' tests/apt-packages.txt | grep -v '^[[:space:]]*$' \
             | xargs sudo apt-get install -y -qq --no-install-recommends
+
+      # This leg only. Deliberately not in tests/apt-packages.txt: that file is the
+      # container's contract and no container build targets armhf, so putting a
+      # cross compiler in it would re-inflate the list we just trimmed.
+      - name: Install cross toolchain (arm-linux)
+        if: matrix.triplet == 'arm-linux'
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+          arm-linux-gnueabihf-gcc --version | head -1
 
       - name: Install prerequisites (macOS)
         if: runner.os == 'macOS'
