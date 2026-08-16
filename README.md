@@ -619,8 +619,9 @@ Three things about GitHub Packages worth knowing before relying on it:
   exist — they need no token at all.
 - It never runs on `pull_request`. A fork PR gets a read-only token, and asking
   for `readwrite` there would fail the leg on something other than the thing under
-  test. The two macOS legs are also excluded for now: `nuget.exe` needs `mono`
-  there and those images are not documented to ship it.
+  test. Every other event runs it on all six legs — the `ubuntu-22.04` images ship
+  the `mono` that `nuget.exe` needs, Windows runs it directly, and the macOS
+  prerequisites step installs it.
 
 **vcpkg only uploads packages it builds.** Restored ones are not re-published, so
 while the Actions cache is warm nothing reaches NuGet — the first run with both

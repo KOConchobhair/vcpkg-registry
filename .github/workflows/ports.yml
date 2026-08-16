@@ -50,20 +50,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # nuget: whether this leg also pushes to the GitHub Packages binary
-          # cache. Off on the two macOS legs for now: nuget.exe needs mono there
-          # and the runner image is not documented to ship it, so those wait until
-          # the linux and windows legs have proved the feed works.
+          # nuget: every leg pushes to and restores from the GitHub Packages
+          # binary cache. The macOS legs need mono installed for it (see the
+          # prerequisites step); the ubuntu-22.04 images already ship it, and
+          # Windows runs nuget.exe directly.
           - { runner: ubuntu-22.04, triplet: x64-linux, os: linux, nuget: true }
           - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux, nuget: true }
-          - { runner: macos-14, triplet: arm64-osx, os: macos }
+          - { runner: macos-14, triplet: arm64-osx, os: macos, nuget: true }
           - { runner: windows-2022, triplet: x64-windows, os: windows, nuget: true }
           # Cross targets: host_triplet is the machine doing the building, since
           # android and ios binaries cannot run on the runner and vcpkg needs host
           # tools (moc, and the host qtbase behind it) it can execute.
           # ANDROID_NDK_HOME comes from the runner image itself; no step sets it.
           - { runner: ubuntu-22.04, triplet: arm64-android, os: linux, host_triplet: x64-linux, nuget: true }
-          - { runner: macos-14, triplet: arm64-ios, os: macos, host_triplet: arm64-osx }
+          - { runner: macos-14, triplet: arm64-ios, os: macos, host_triplet: arm64-osx, nuget: true }
     defaults:
       run:
         # Git Bash on Windows, so tests/run.sh is the single implementation
@@ -104,7 +104,11 @@ jobs:
         if: matrix.os == 'macos'
         # autoconf-archive is what libb2 needs; nasm is for openh264/ffmpeg asm.
         # No cmake or ninja - vcpkg fetches its own, same as everywhere else.
-        run: brew install autoconf autoconf-archive automake libtool nasm pkgconf
+        #
+        # mono runs the nuget.exe that vcpkg fetches for the binary cache. The
+        # ubuntu-22.04 images ship it and Windows does not need it; these runners
+        # have neither, so it is installed here.
+        run: brew install autoconf autoconf-archive automake libtool nasm pkgconf mono
 
       # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
       # acquires nasm and perl itself when a port asks for them.
