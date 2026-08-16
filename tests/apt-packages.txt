@@ -2,26 +2,47 @@
 # Shared by tests/Dockerfile and the GitHub Actions workflow so the two
 # environments cannot drift.
 #
+# This list is minimal, and was trimmed against a cold arm64 container build
+# from a bare ubuntu:22.04 - not against CI, which cannot validate it. The
+# runner images already ship most of these, so a wrong removal here stays green
+# in CI and breaks only on a developer's machine.
+#
 # No cmake or ninja on purpose: Ubuntu 22.04 ships cmake 3.22 and vcpkg at this
 # baseline needs 4.2+ for string(JSON ... STRING_ENCODE). vcpkg carries cmake
 # 4.4.0 for linux-aarch64 and linux-x86_64 both, so let it fetch its own and do
 # not set VCPKG_FORCE_SYSTEM_BINARIES.
+#
+# Removed after the build proved them unnecessary - do not re-add without one:
+#   bison, flex        no port in the graph uses them; they are transitive needs
+#                      of glib and dbus, which this manifest does not build
+#   python3-jinja2     no consumer
+#   m4                 comes with autoconf
+#   tar                an Essential package; always in the base image
+#   linux-libc-dev     comes with build-essential, via libc6-dev. openssl prints
+#                      "requires Linux kernel headers ... apt install
+#                      linux-libc-dev" unconditionally, which reads like a
+#                      missing dependency and is not one: /usr/include/linux is
+#                      already populated. Verified in a bare container.
 build-essential
 git
 curl
 ca-certificates
+# Required, and vcpkg will not acquire it for you: vcpkg_find_acquire_program
+# refuses to download pkg-config on Linux and tells you to apt-install it. Every
+# autotools port reaches it through vcpkg_configure_make ->
+# z_vcpkg_setup_pkgconfig_path, so openssl fails within seconds without it. The
+# pkgconf *port* vcpkg builds is for consumers of the installed tree, not for
+# vcpkg's own build machinery.
+pkg-config
 zip
 unzip
-tar
-pkg-config
+# vcpkg-get-python-packages, and run.sh's own manifest parsing.
 python3
-python3-jinja2
+# libb2 is autotools and needs autoreconf; autoconf-archive carries the macros
+# it uses. These are the only ports in the graph that need them.
 autoconf
 autoconf-archive
 automake
 libtool
-m4
-bison
-flex
-linux-libc-dev
+# openh264 and ffmpeg assembly.
 nasm

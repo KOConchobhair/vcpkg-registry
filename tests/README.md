@@ -122,7 +122,11 @@ signal on qtbase and opencv4 for that leg. The `Installed tree` step runs
   Because `overlay-triplets` is `../triplets`, resolved relative to the manifest,
   `run.sh` stages `tests/` and `triplets/` together rather than copying the manifest
   somewhere flat.
-- `apt-packages.txt` — the system package list. Deliberately no cmake or ninja:
+- `apt-packages.txt` — the system package list, trimmed to 13 and verified by a
+  cold container build rather than by CI, which cannot check it: the runner
+  images already ship most of the list, so a wrong removal stays green there and
+  breaks only on a developer's machine. `pkg-config` is the one that cannot go —
+  vcpkg refuses to acquire it on Linux. Deliberately no cmake or ninja:
   Ubuntu 22.04's cmake is 3.22 and vcpkg at this baseline needs 4.2+ for
   `string(JSON ... STRING_ENCODE)`. vcpkg carries cmake 4.4.0 for both
   linux-aarch64 and linux-x86_64, so it fetches its own. Do not set
