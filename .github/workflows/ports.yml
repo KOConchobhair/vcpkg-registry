@@ -40,20 +40,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # nuget: every leg pushes to and restores from the GitHub Packages
-          # binary cache. The macOS legs need mono installed for it (see the
-          # prerequisites step); the ubuntu-22.04 images already ship it, and
-          # Windows runs nuget.exe directly.
-          - { runner: ubuntu-22.04, triplet: x64-linux, os: linux, nuget: true }
-          - { runner: ubuntu-22.04-arm, triplet: arm64-linux, os: linux, nuget: true }
-          - { runner: macos-14, triplet: arm64-osx, os: macos, nuget: true }
-          - { runner: windows-2022, triplet: x64-windows, os: windows, nuget: true }
+          # Every leg uses the GitHub Packages NuGet binary cache, so there is no
+          # flag for it. Steps that differ by platform test the built-in
+          # runner.os rather than a matrix field, which cannot drift from the
+          # runner image it describes.
+          - { runner: ubuntu-22.04, triplet: x64-linux }
+          - { runner: ubuntu-22.04-arm, triplet: arm64-linux }
+          - { runner: macos-14, triplet: arm64-osx }
+          - { runner: windows-2022, triplet: x64-windows }
           # Cross targets: host_triplet is the machine doing the building, since
           # android and ios binaries cannot run on the runner and vcpkg needs host
           # tools (moc, and the host qtbase behind it) it can execute.
           # ANDROID_NDK_HOME comes from the runner image itself; no step sets it.
-          - { runner: ubuntu-22.04, triplet: arm64-android, os: linux, host_triplet: x64-linux, nuget: true }
-          - { runner: macos-14, triplet: arm64-ios, os: macos, host_triplet: arm64-osx, nuget: true }
+          - { runner: ubuntu-22.04, triplet: arm64-android, host_triplet: x64-linux }
+          - { runner: macos-14, triplet: arm64-ios, host_triplet: arm64-osx }
     defaults:
       run:
         # Git Bash on Windows, so tests/run.sh is the single implementation
@@ -66,7 +66,7 @@ jobs:
           fetch-depth: 0
 
       - name: Reclaim disk space
-        if: matrix.os == 'linux'
+        if: runner.os == 'Linux'
         # qtbase and opencv4 buildtrees are large. The preinstalled toolchains are
         # not used here, and dropping them roughly doubles the free space.
         #
@@ -84,14 +84,14 @@ jobs:
           df -h /
 
       - name: Install prerequisites (Linux)
-        if: matrix.os == 'linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           grep -v '^[[:space:]]*#' tests/apt-packages.txt | grep -v '^[[:space:]]*$' \
             | xargs sudo apt-get install -y -qq --no-install-recommends
 
       - name: Install prerequisites (macOS)
-        if: matrix.os == 'macos'
+        if: runner.os == 'macOS'
         # autoconf-archive is what libb2 needs; nasm is for openh264/ffmpeg asm.
         # No cmake or ninja - vcpkg fetches its own, same as everywhere else.
         #
@@ -126,9 +126,9 @@ jobs:
           # Push only, never pull_request: a fork PR gets a read-only token, and
           # asking for readwrite there would fail the leg on something that is not
           # the thing under test. An empty feed switches the block in run.sh off
-          # entirely.
-          VCPKG_NUGET_FEED: ${{ (matrix.nuget && github.event_name != 'pull_request') && format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) || '' }}
-          VCPKG_NUGET_TOKEN: ${{ (matrix.nuget && github.event_name != 'pull_request') && secrets.GITHUB_TOKEN || '' }}
+          # entirely - which is what makes a pull_request run skip it.
+          VCPKG_NUGET_FEED: ${{ github.event_name != 'pull_request' && format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) || '' }}
+          VCPKG_NUGET_TOKEN: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
           VCPKG_NUGET_USER: ${{ github.repository_owner }}
 
       - name: Installed tree

@@ -33,8 +33,6 @@ case "$TRIPLET" in
   *-android*) OS=android; STATIC_EXT=a;   SHARED_EXT=so;    LIBPFX=lib;  TLS_BACKEND=openssl ;;
   *)          OS=linux;   STATIC_EXT=a;   SHARED_EXT=so;    LIBPFX=lib;  TLS_BACKEND=openssl ;;
 esac
-# Shared libraries live in bin/ on Windows; the import .lib stays in lib/.
-case "$OS" in windows) SHAREDDIR="$INSTALLED/$TRIPLET/bin" ;; *) SHAREDDIR="$LIB" ;; esac
 
 # One pass over the installed tree, so lookups match on basename instead of
 # assuming a directory layout. Every layout assumption here has now been wrong on
@@ -50,6 +48,7 @@ case "$OS" in windows) SHAREDDIR="$INSTALLED/$TRIPLET/bin" ;; *) SHAREDDIR="$LIB
 # Rooted at the triplet, never at $INSTALLED: on the cross-compiling legs the host
 # packages sit next door in installed/x64-linux and installed/arm64-osx, and a
 # host Qt6Gui would otherwise fail an absence check for the target.
+#
 # Narrowed to libraries at the find level so match() iterates over a few hundred
 # entries rather than the whole tree's tens of thousands of headers.
 #
