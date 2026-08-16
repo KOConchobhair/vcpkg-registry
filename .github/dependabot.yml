@@ -1,0 +1,24 @@
+# Security updates only.
+#
+# open-pull-requests-limit: 0 is the documented way to say that: it disables
+# version-update pull requests for the ecosystem, and GitHub's options reference
+# states that security updates are unaffected by the limit. Without it Dependabot
+# would open a PR every week bumping builtin-baseline, which is a change this
+# registry wants to make deliberately - the baseline is what ports/ was vendored
+# from, and moving it means re-checking the local delta.
+#
+# What it watches is tests/vcpkg.json, the consumer manifest. Alerts come from
+# GitHub's dependency graph, which the ports workflow's dependency-graph job
+# populates by running a --dry-run install with VCPKG_FEATURE_FLAGS=dependencygraph.
+# Without that job there is nothing for Dependabot to raise an alert against.
+version: 2
+updates:
+  - package-ecosystem: "vcpkg"
+    # The directory holding vcpkg.json, not the file itself.
+    directory: "/tests"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+      - "security"

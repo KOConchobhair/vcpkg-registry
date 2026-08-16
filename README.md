@@ -642,6 +642,29 @@ another leg is also building — `arm64-android` with `x64-linux`, `arm64-ios` w
 `nuget push` command itself and does not pass `-SkipDuplicate`, so this is noise
 rather than something configurable.
 
+### Dependency graph and Dependabot
+
+The `dependency-graph` job in the ports workflow runs a `--dry-run` install with
+`VCPKG_FEATURE_FLAGS=dependencygraph`, which submits the resolved dependency set to
+GitHub's dependency graph. Nothing is built. It is a separate job rather than a
+step in the matrix because the graph is per repository — six legs submitting would
+be six snapshots racing to be last — and it needs `contents: write`, which is
+granted at job level so the build legs keep `contents: read`.
+
+It runs `tests/run.sh x64-linux depgraph`, a mode that exists only to avoid one
+trap: `resolve` also probes the gui feature flavour, and with the feature flag
+active *every* `--dry-run` submits a snapshot. The graph would then carry gui-only
+dependencies this registry never builds, and Dependabot would raise alerts against
+them. One limitation to know: the snapshot is x64-linux's resolution, so a
+dependency that appears only on Windows or Apple is not represented.
+
+`.github/dependabot.yml` is **security updates only**, via
+`open-pull-requests-limit: 0` — which disables version-update pull requests while
+leaving security updates unaffected. Without that, Dependabot would open a weekly
+PR bumping `builtin-baseline`, and moving the baseline is a deliberate act here:
+it is what `ports/` was vendored from, so changing it means re-checking the local
+delta against upstream.
+
 ### Build provenance
 
 Each leg packages its installed tree as `vcpkg-<triplet>-<sha>.tar.gz`, uploads it,

@@ -14,7 +14,6 @@ on:
   push:
     branches: [trunk]
   pull_request:
-  workflow_dispatch:
 
 # Declaring any permission replaces the whole default set, so contents: read has
 # to be spelled out or checkout loses its token. packages is for the NuGet binary
@@ -124,11 +123,10 @@ jobs:
           # repository - there is no per-repo feed URL. Packages therefore land
           # under this account and link to whichever repository pushed them.
           #
-          # Push and workflow_dispatch, never pull_request: a fork PR gets a
-          # read-only token, and asking for readwrite there would fail the leg on
-          # something that is not the thing under test. workflow_dispatch is
-          # included so the feed can be refreshed by hand. An empty feed switches
-          # the block in run.sh off entirely.
+          # Push only, never pull_request: a fork PR gets a read-only token, and
+          # asking for readwrite there would fail the leg on something that is not
+          # the thing under test. An empty feed switches the block in run.sh off
+          # entirely.
           VCPKG_NUGET_FEED: ${{ (matrix.nuget && github.event_name != 'pull_request') && format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) || '' }}
           VCPKG_NUGET_TOKEN: ${{ (matrix.nuget && github.event_name != 'pull_request') && secrets.GITHUB_TOKEN || '' }}
           VCPKG_NUGET_USER: ${{ github.repository_owner }}
@@ -198,3 +196,38 @@ jobs:
           path: ${{ runner.temp }}/work/buildtrees/**/*.log
           retention-days: 7
           if-no-files-found: ignore
+
+  # Reports the resolved dependency set to GitHub's dependency graph, which is what
+  # Dependabot reads to raise security alerts - see .github/dependabot.yml. Nothing
+  # is built: VCPKG_FEATURE_FLAGS=dependencygraph makes a --dry-run install submit a
+  # snapshot.
+  #
+  # Its own job rather than a step in the matrix, because the graph is per
+  # repository: six legs submitting would be six snapshots racing to be last. One
+  # leg is also a limitation worth knowing - the snapshot is x64-linux's resolution,
+  # so a dependency that only appears on Windows or Apple is not represented.
+  #
+  # Push only. Submission targets the default branch, and a fork pull request has no
+  # write token.
+  dependency-graph:
+    name: dependency graph
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    # Job-level permissions replace the top-level set for this job. Submission
+    # needs contents: write; checkout is satisfied by it.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Submit dependencies
+        run: ./tests/run.sh x64-linux depgraph
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VCPKG_FEATURE_FLAGS: dependencygraph
+          REGISTRY: ${{ github.workspace }}
+          WORK: ${{ runner.temp }}/work
+          VCPKG_DOWNLOADS: ${{ runner.temp }}/downloads
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/cache
+          REGISTRY_HEAD: ${{ github.sha }}

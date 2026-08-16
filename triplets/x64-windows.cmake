@@ -7,12 +7,26 @@
 # No -fvisibility=hidden counterpart: it is a GCC/Clang flag, ci/build_opencv.sh's
 # own notes say to drop it on Windows, and MSVC exports nothing from a static
 # library unless told to.
+#
+# Note the name is upstream's `x64-windows` but the settings are upstream's
+# `x64-windows-static-md`: dynamic CRT, static libraries. Upstream's own
+# `x64-windows` links libraries dynamically. Keeping the plain name is deliberate -
+# the same six triplet names are used on every platform here, and the linkage
+# policy below is uniform across them - but anyone comparing against upstream
+# should expect static-md behaviour, plus the LGPL exceptions.
 set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
 
 # Static by default - opencv4, libuv, amqpcpp, prometheus-cpp and everything else
 # link straight into the SDK.
 set(VCPKG_LIBRARY_LINKAGE static)
+
+# Every upstream Windows triplet sets this, so match them. It only affects ports
+# that call vcpkg_find_fortran: ON means vcpkg acquires MinGW gfortran from MSYS
+# rather than expecting the toolchain to supply a Fortran compiler. Nothing in
+# tests/vcpkg.json needs Fortran today, so this is inert here - it matters the day
+# something like lapack-reference enters the graph.
+set(VCPKG_PROVIDED_FORTRAN ON)
 
 # Dynamic for the LGPL libraries, on every platform. The LGPL's relinking
 # requirement is satisfied by shipping them as replaceable DLLs; static linking

@@ -30,6 +30,7 @@
 #   resolve    the same, resolution only - no compiling
 #   overlay    the same, but --overlay-ports for the working tree. Dev loop only:
 #              it bypasses versions/, so it proves nothing about the registry.
+#   depgraph   resolution only, no checks - for dependency-graph submission
 #   verify     re-check an existing install tree
 #
 # consumer and resolve read the *committed* tree, so commit before running them.
@@ -295,10 +296,15 @@ for line in sys.stdin:
 
 case "$MODE" in
   resolve)  check_gui_flavor; ARGS+=(--dry-run) ;;
+  # No check_gui_flavor: that probe resolves the gui flavour too, and with
+  # VCPKG_FEATURE_FLAGS=dependencygraph every --dry-run submits a snapshot. The
+  # graph would then carry gui-only dependencies this registry never builds, and
+  # Dependabot would raise alerts against them.
+  depgraph) ARGS+=(--dry-run) ;;
   consumer) check_gui_flavor ;;
   overlay)  ARGS+=(--overlay-ports="$REGISTRY/ports") ;;
   *)
-    echo "mode must be consumer, resolve, overlay or verify" >&2
+    echo "mode must be consumer, resolve, depgraph, overlay or verify" >&2
     exit 2
     ;;
 esac
