@@ -51,6 +51,13 @@ if(PORT MATCHES "opencv")
     # ADDITIONAL_BUILD_FLAGS is expanded after the port's own OPTIONS, so the later
     # -D wins.
     list(APPEND ADDITIONAL_BUILD_FLAGS "-DBUILD_WITH_DEBUG_INFO=OFF")
+    # Neither is a port feature, so this is the only lever. WITH_AVFOUNDATION is
+    # not exposed at all; WITH_FLATBUFFERS is tied to the dnn feature, so it is on
+    # wherever dnn is - it only adds TFLite model import, which the SDK does not
+    # use. WITH_DSHOW, WITH_MSMF and WITH_CAROTENE need nothing here: all three
+    # are features, so "default-features": false already makes vcpkg pass them
+    # as OFF explicitly.
+    list(APPEND ADDITIONAL_BUILD_FLAGS "-DWITH_AVFOUNDATION=OFF" "-DWITH_FLATBUFFERS=OFF")
 endif()
 
 set(VCPKG_CMAKE_SYSTEM_NAME Linux)
