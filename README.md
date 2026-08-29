@@ -618,7 +618,7 @@ other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 | 4 | **Add `features2d`, `intrinsics`, `fs`, `thread` to the `opencv4` features** | The four silent ones. `features2d` is newly a feature; the other three are upstream defaults that the existing `"default-features": false` was already discarding. `intrinsics` is the expensive one — it maps to `CV_ENABLE_INTRINSICS`, so without it OpenCV has no SSE/AVX or NEON code paths at all. |
 | 5 | **Add `"default-features": false` to the `qtbase` edge inside the `gui` feature** | The most consequential line in this list. Without it, enabling `gui` discards the headless configuration entirely and unions in `icu`, `libpq`, `testlib`, `freetype`, `harfbuzz` and the X11 stack. Measured under "`default-features: false` has to be on *every* edge". |
 | 6 | **Collapse the two `qtbase` entries into one**, with the TLS and async-io backends as platform-qualified Feature Objects | Today there are `osx` and `!osx` entries, so Windows takes the `!osx` branch and links OpenSSL even though **`schannel`**, new in this registry's port, gives it a native stack. One entry covers all three platforms — see "TLS backends" for the exact block. |
-| 7 | **Point `overlay-triplets` at this repository's `triplets/`** and delete `ci/vcpkg/` | Optional; see "Triplets". Retires the `WITH_CAROTENE`/`WITH_MSMF` hacks and adds `-fvisibility=hidden`. |
+| 7 | **Point `overlay-triplets` at this repository's `triplets/`** and delete `ci/vcpkg/` | Optional for correctness, **required for the binary cache**: triplet file contents feed the ABI hash, so different triplets mean nothing restores. See "Triplets", and "Consuming the binary cache" below. Retires the `WITH_CAROTENE`/`WITH_MSMF` hacks and adds `-fvisibility=hidden`. |
 | 8 | **Keep the `protobuf` override** (`3.19.4`) | Kept deliberately — `tests/vcpkg.json` carries it, so CI tests it. Note the risk: `opencv4` 4.12.0's `dnn` is patched against a far newer protobuf, and the builds here that passed used the baseline's 6.33.4. Whether 4.12.0 compiles against 3.19.4 is unproven and is precisely what the pipeline will answer. |
 
 `tests/vcpkg.json` has all eight applied, plus a `jetson` feature for
@@ -754,6 +754,90 @@ another leg is also building — `arm64-android` with `x64-linux`, `arm64-ios` w
 `arm64-osx` — so they race to publish the shared host packages. vcpkg builds the
 `nuget push` command itself and does not pass `-SkipDuplicate`, so this is noise
 rather than something configurable.
+
+### Consuming the binary cache
+
+The feed the CI here publishes to can serve a consuming project as well, on
+Microsoft's recommended split: **read/write in CI, read-only on workstations**. A
+developer then cannot poison the shared cache with artifacts built by a different
+compiler.
+
+**Check this first, because it decides whether any of it is worth doing.** A vcpkg
+binary cache is keyed on the ABI hash, which covers port contents, *triplet file
+contents*, the selected feature set and the compiler. If any of those differ, the
+consumer gets a clean, silent 0% hit rate — everything works and nothing is
+reused. So all four have to line up:
+
+1. consume this registry, so port versions match
+2. drop overrides that name versions this registry does not serve (steps 2 and 3
+   above)
+3. use **this registry's `triplets/`** — step 7, which is why that row is only
+   optional for correctness
+4. build on the same compiler as the publishing CI (`ubuntu-22.04`, `macos-14`,
+   `windows-2022`); a different runner image is a different compiler, and a
+   different ABI
+
+Two facts about GitHub Packages that shape the setup. Feeds are **owner-scoped**
+(`https://nuget.pkg.github.com/<OWNER>/index.json`), so a consumer in another
+account or organisation cannot use its own `GITHUB_TOKEN` to reach this one — the
+tidy answer is to publish under the organisation that consumes it, which makes
+`GITHUB_TOKEN` plus `permissions: packages: write` sufficient and needs no
+secrets at all. And there is **no anonymous access even to public packages**, so
+every reader needs a classic PAT with `read:packages`.
+
+#### In CI, read/write
+
+`nuget.exe` comes from vcpkg, so authentication has to happen after vcpkg is
+bootstrapped and before the build:
+
+```yaml
+permissions:
+  contents: read
+  packages: write
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Authenticate vcpkg binary cache
+        shell: bash
+        env:
+          FEED: https://nuget.pkg.github.com/<OWNER>/index.json
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NUGET="$("$VCPKG_ROOT/vcpkg" fetch nuget | tail -n1)"
+          nu() { case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) "$NUGET" "$@";; *) mono "$NUGET" "$@";; esac; }
+          nu sources add -Source "$FEED" -StorePasswordInClearText -Name roc \
+             -UserName "${{ github.repository_owner }}" -Password "$TOKEN"
+          nu setapikey "$TOKEN" -Source "$FEED"
+
+      - name: Build
+        env:
+          VCPKG_BINARY_SOURCES: "clear;default,readwrite;nuget,https://nuget.pkg.github.com/<OWNER>/index.json,readwrite"
+```
+
+A local `default` cache in front of the feed is worth keeping — it is faster, and
+sources are consulted in order. Expect one confusing first run, though: **vcpkg
+only uploads packages it builds**, so if that local cache is already warm nothing
+reaches the feed and the setup looks broken when it is working correctly.
+
+`mono` is needed to run `nuget.exe` anywhere but Windows. The `ubuntu-22.04`
+images ship it; macOS runners need `brew install mono`.
+
+#### On a workstation, read-only
+
+```bash
+# once - the PAT needs only read:packages
+NUGET=$("$VCPKG_ROOT/vcpkg" fetch nuget | tail -n1)
+mono "$NUGET" sources add \
+  -Source https://nuget.pkg.github.com/<OWNER>/index.json \
+  -StorePasswordInClearText -Name roc -UserName <user> -Password <PAT>
+
+# then, in a shell profile
+export VCPKG_BINARY_SOURCES="clear;default,readwrite;nuget,https://nuget.pkg.github.com/<OWNER>/index.json,read"
+```
+
+The local cache stays read/write so a developer's own builds are still cached;
+only the shared feed is read-only. No `setapikey` — that is for pushing.
 
 ### Dependency graph and Dependabot
 
