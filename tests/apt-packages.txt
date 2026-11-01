@@ -46,3 +46,7 @@ automake
 libtool
 # openh264 and ffmpeg assembly.
 nasm
+# The desktop flavour's qtbase[gui] (see run.sh). vcpkg's opengl port installs
+# only the Khronos headers on Linux; Qt's find_package(OpenGL) still needs the
+# system libGL. rankone's build-sdk workflow installs the same package.
+libgl1-mesa-dev

@@ -312,3 +312,71 @@ case "$MODE" in
     bash "$REGISTRY/tests/verify.sh" "$TRIPLET" "$WORK/installed"
     ;;
 esac
+
+# The desktop flavour: the same manifest again, with the features rankone's own
+# vcpkg builds turn on, into a second install root.
+#
+# This exists for the binary cache, not as a test. A cached package is keyed on
+# its feature set, and every rankone configuration that goes through vcpkg enables
+# gui (CMakeLists.txt adds it whenever BR_EMBEDDED is off) and, on Linux, numa. The
+# headless pass above therefore produces a qtbase no rankone build ever asks for -
+# and qtbase is the package most worth not rebuilding. Building this flavour here
+# is what lets a consumer restore it instead.
+#
+# What rankone enables, from CMakeLists.txt and CMakePresets.json:
+#   gui         every preset except the BR_EMBEDDED cuda one
+#   numa        CMAKE_HOST_SYSTEM_NAME Linux; platform-qualified, so inert elsewhere
+#   prometheus, sentry
+#               enterprise-search presets. Cheap, and leave the shared packages'
+#               feature sets alone, so they do not perturb anything else's hash
+#   cuda        Windows only here: there it is just ffmpeg[nvcodec], headers only.
+#               On Linux it also means cudnn, which needs a CUDA toolkit on the
+#               runner, so the Linux cuda flavour is not prebuilt
+#
+# Mobile and embedded triplets have no desktop flavour - the manifest scopes gui
+# to !ios & !android, and nothing builds gui for an armhf board.
+#
+# DESKTOP_FEATURES overrides the list; set it empty to skip the pass entirely.
+desktop_features() {
+  case "$TRIPLET" in
+    *-ios*|*-android|arm-linux) return 0 ;;
+    *-windows) echo "gui numa prometheus sentry cuda" ;;
+    *)         echo "gui numa prometheus sentry" ;;
+  esac
+}
+
+check_desktop_tree() {
+  local root="$1" fail=0 pat
+  echo "=== desktop flavour checks: $root ==="
+  # Names differ per platform: libQt6Gui.so (Linux), QtGui.framework (macOS),
+  # Qt6Gui.dll (Windows). sentry is a static library everywhere but Windows.
+  for pat in 'Qt6Gui*' 'Qt6Widgets*' 'Qt6Sql*' 'Qt6Xml*' '*sentry*'; do
+    if find "$root" \( -name "$pat" -o -name "lib$pat" -o -name "Qt${pat#Qt6}.framework" \) \
+         -print -quit 2>/dev/null | grep -q .; then
+      echo "  ok    $pat"
+    else
+      echo "  FAIL  nothing matching $pat in the desktop tree" >&2; fail=1
+    fi
+  done
+  return "$fail"
+}
+
+if [ "$MODE" = consumer ]; then
+  DESKTOP_FEATURES="${DESKTOP_FEATURES-$(desktop_features)}"
+  if [ -n "$DESKTOP_FEATURES" ]; then
+    DESKTOP_ARGS=()
+    for a in "${ARGS[@]}"; do
+      case "$a" in
+        --x-install-root=*) DESKTOP_ARGS+=(--x-install-root="$WORK/installed-desktop") ;;
+        *)                  DESKTOP_ARGS+=("$a") ;;
+      esac
+    done
+    for f in $DESKTOP_FEATURES; do DESKTOP_ARGS+=(--x-feature="$f"); done
+    echo
+    echo "=== vcpkg desktop flavour ${TRIPLET}: ${DESKTOP_FEATURES} ==="
+    "$VCPKG" "${DESKTOP_ARGS[@]}"
+    check_desktop_tree "$WORK/installed-desktop/$TRIPLET"
+  else
+    echo "=== no desktop flavour for ${TRIPLET} ==="
+  fi
+fi
