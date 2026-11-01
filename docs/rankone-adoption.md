@@ -3,7 +3,7 @@
 How rankone's vcpkg builds would switch to this registry, what they gain and
 lose, and what has to line up for the prebuilt packages to actually restore.
 Written against rankone `master` at `a7efe3e71` (2026-11-01) and this registry
-at qtbase 6.11.2#1.
+at qtbase 6.11.2#2.
 
 **Short version.** Switching the manifest is worth doing on its own: it makes
 the GitHub Actions builds compile the same Qt and OpenCV *configuration* the
@@ -36,7 +36,7 @@ These are behaviour changes, not just plumbing. Each needs a look in review.
 
 | | Today (`ci/vcpkg.json`) | With the registry |
 | --- | --- | --- |
-| Qt version | 6.11.2 (baseline) | 6.11.2#1 — same Qt, ROC delta on top |
+| Qt version | 6.11.2 (baseline) | 6.11.2#2 — same Qt, ROC delta on top |
 | Qt TLS, Linux | OpenSSL **linked** | `openssl-runtime`: dlopened, like `build_qt6.sh -openssl-runtime` |
 | Qt TLS, Windows | OpenSSL | **Schannel** — no OpenSSL in Qt at all |
 | Qt TLS, macOS | SecureTransport | unchanged |

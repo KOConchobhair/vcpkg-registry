@@ -8,7 +8,7 @@ does not carry at all, plus the overlay triplets that go with them.
 
 | Port | Upstream | Why it is here |
 | ---- | -------- | -------------- |
-| `qtbase` | 6.11.2#0 → **#1** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
+| `qtbase` | 6.11.2#0 → **#2** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; forces `cups` on macOS only for `widgets` builds, which need it, rather than always — which made headless Qt impossible there |
 | `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
@@ -43,7 +43,8 @@ commits after it. That split is the point: the vendor commit is the merge base
 that makes every later comparison a clean three-way diff.
 
 When rankone moved its baseline to `2cfff9c458d9dcf642e9fa09ba624f9931bb5358`,
-`qtbase` was resynced to that commit's 6.11.2 (`b733ee79b`): upstream's port
+`qtbase` was resynced to that commit's 6.11.2 (`b733ee79b`, then #2 in
+`fd1e42da4`): upstream's port
 taken wholesale, then the delta re-applied with `git apply -3`. `opencv4` and
 `ffmpeg` were not — rankone pins both through overrides, and `ffmpeg` is held at
 7.0.2 by the nvmpi patch set — so their merge base is still `e0ad9522b`.
@@ -346,7 +347,7 @@ nowhere in the installed tree.
 exists only for internal development tooling, so QDomDocument follows the same
 desktop-only path and never reaches the shipped mobile package.
 
-### Headless Qt on macOS needed a one-word port fix
+### Headless Qt on macOS: `cups` moved from the port to `widgets`
 
 Everywhere else, `"default-features": false` plus an explicit feature list gets a
 Qt with no GUI. macOS used to be the exception, and it was upstream's doing: the
@@ -362,18 +363,26 @@ list rather than behind any feature —
 `Qt6Widgets` and `Qt6OpenGL` were built on macOS no matter what the consumer asked
 for.
 
-The telling detail is that **Linux has no such entry**, even though the `cups`
-feature is declared `supports: "linux | osx"`. Printing support is opt-in on Linux
-and was compulsory on macOS. That asymmetry is what marks it as an oversight rather
-than a requirement.
+6.11.1#3 deleted the word, leaving `"features": ["thread"]`, on the reasoning
+that Linux has no such entry and the portfile already disables CUPS cleanly when
+the feature is off (`-DFEATURE_cups=OFF` and `-DCMAKE_DISABLE_FIND_PACKAGE_Cups=ON`).
+**That reasoning was half right.** It holds for headless Qt. It does not hold for
+any macOS build with `widgets`, and the first one this CI ran — the desktop flavour,
+on 2026-11-01 — failed at configure:
 
-The fix in this registry (6.11.1#3) is to delete one word, leaving
-`"features": ["thread"]`. It is safe because the portfile already disables CUPS
-properly when the feature is off — `vcpkg_check_features` passes both
-`-DFEATURE_cups=OFF` and, through `INVERTED_FEATURES`,
-`-DCMAKE_DISABLE_FIND_PACKAGE_Cups=ON`, so Qt cannot autodetect a system CUPS
-behind the port's back. The likeliest history is that the forced dependency
-predates that guard and became redundant when it landed.
+```
+Target "PrintSupport" links to: Cups::Cups but the target was not found.
+```
+
+PrintSupport is built whenever `widgets` is, and on Apple Qt links `Cups::Cups`
+into it unconditionally (`src/printsupport/CMakeLists.txt`, `CONDITION MACOS`),
+with `qt_find_package(Cups)` required rather than optional — `configure.cmake`
+marks it optional only for `NOT APPLE AND BUILD_SHARED_LIBS`. That, not an
+oversight, is why upstream forces `cups` on macOS and not on Linux.
+
+So 6.11.2#2 puts it back where it is actually needed: the `widgets` feature
+depends on `cups` on `osx`. Headless macOS Qt still gets none of `cups`, `gui`,
+`widgets` or `opengl`; a widgets build gets exactly upstream's behaviour.
 
 Measured by resolving `arm64-osx` against this registry, the qtbase feature set is
 now
@@ -387,9 +396,9 @@ with no `cups`, `gui`, `widgets` or `opengl`. Headless Qt now works on every
 target, and `verify.sh` asserts the same "must NOT be built" list everywhere
 instead of carrying a macOS exception.
 
-This is a one-word deletion against a stock port with no behaviour change for
-anyone who asks for `cups` explicitly, which makes it a strong upstream candidate —
-see "Proposing a change upstream".
+Proposable upstream as the same move — the forced entry relocated from the
+top-level dependencies to the `widgets` feature — with no change for anyone who
+builds widgets.
 
 ### Frameworks
 
@@ -630,7 +639,7 @@ depends on `amqpcpp` and `libuv` for exactly this reason: neither is in the
 ```
 ffmpeg[...]:arm64-linux@7.0.2#8   -- git+/registry@111c5649...
 opencv4[...]:arm64-linux@4.12.0#9 -- git+/registry@09539bf6...
-qtbase[...]:arm64-linux@6.11.2#1  -- git+/registry@3c15ccb3...
+qtbase[...]:arm64-linux@6.11.2#2  -- git+/registry@fd2aeba3...
 amqpcpp:arm64-linux@4.3.27
 libuv:arm64-linux@1.52.1
 openssl:arm64-linux@3.6.5#1
@@ -682,7 +691,7 @@ intermediate revisions:
 
 | Port | Upstream | Here |
 | ---- | -------- | ---- |
-| `qtbase` | 6.11.2#0 | 6.11.2#1 (6.11.1#4 before the resync, still recorded) |
+| `qtbase` | 6.11.2#0 | 6.11.2#2 (6.11.1#4 and 6.11.2#1 are still recorded) |
 | `opencv4` | 4.12.0#7 | 4.12.0#9 (#8 was pushed on 2026-08-14 and its entry *replaced* by #9 a day later, rather than kept — the one exception to the rule below) |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
@@ -975,45 +984,55 @@ VM's ext4 for this reason.
 
 ## Verified
 
-### qtbase and opencv4
+### CI, every triplet
 
-**`arm64-linux` — built and verified.** `tests/vcpkg.json` installs completely — 70
-packages including `ffmpeg`, `ffprobe`, `amqpcpp` and `libuv` — and
-`tests/verify.sh` passes every check with nothing skipped:
+As of the baseline-`2cfff9c` rebuild on 2026-11-01 (runs
+[41328486277](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41328486277)
+and [41335267651](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41335267651)),
+`tests/verify.sh` passes on all ten legs, with platform-inapplicable checks
+counted as `skip` rather than passed. On `x64-linux`, for example:
 
-- `opencv4 4.12.0#8` has `core`, `imgproc`, `imgcodecs`, `dnn`, `features2d`, and
+- `opencv4 4.12.0#9` has `core`, `imgproc`, `imgcodecs`, `dnn`, `features2d`, and
   none of `calib3d`, `flann`, `objdetect`, `photo`, `stitching`, `video`, `gapi`,
   `highgui`, `ts`
-- all 2616 defined globals in `libopencv_core4.a` are `HIDDEN`, none `DEFAULT` —
-  the triplet's `-fvisibility=hidden` reached the compiler
-- `qtbase 6.11.1#2` has `Core`, `Network`, `Concurrent` and none of `Gui`,
-  `Widgets`, `Sql`, `Test`, `DBus`, `OpenGL`
-- the TLS backend is `qopensslbackend` and no other platform's backend leaked in;
-  it links neither `libssl` nor `libcrypto` and imports `QLibrary`, and no Qt
-  library is bound to an OpenSSL soname — `openssl-runtime` took effect, matching
-  `ci/build_qt6.sh`. `verify.sh` reads the mode out of `tests/vcpkg.json`, so it
-  asserts the opposite if plain linked `openssl` is selected instead
+- all 2871 defined globals in `libopencv_core4.a` are `HIDDEN`, none `DEFAULT`
+  (2628 on `arm64-linux`)
+- `qtbase` has `Core`, `Network`, `Concurrent` and none of `Gui`, `Widgets`,
+  `Sql`, `Test`, `DBus`, `OpenGL`, `Xml`
+- the TLS plugin is `qopensslbackend`; it links neither `libssl` nor `libcrypto`
+  and imports `QLibrary`, and no Qt library is bound to an OpenSSL soname —
+  `openssl-runtime` took effect. Windows gets `qschannelbackend.dll`
 - no Qt library links ICU
-- linkage split as intended: `libQt6Core.so`, `libavcodec.so`, `libssl.so`,
-  `libcrypto.so` shared with no static counterpart; `libopencv_core4.a`, `libuv.a`,
-  `libamqpcpp.a` static with no shared counterpart
 
-Also measured, by resolution rather than by build: enabling the manifest's `gui`
-feature with `"default-features": false` on its edge adds `gui`, `sql`,
-`sql-sqlite`, `widgets` and nothing else; without it, the entire default set
-arrives instead.
+The desktop flavour built and passed its presence checks (`Qt6Gui`, `Qt6Widgets`,
+`Qt6Sql`, `Qt6Xml`, sentry) on `x64-linux`, `arm64-linux` and `x64-windows` in the
+first run. Its macOS build is what exposed the `cups` requirement fixed in
+6.11.2#2 — see "Headless Qt on macOS".
 
-**`x64-linux`, `arm64-osx`, `x64-windows` — written, not yet run.** Nothing here
-can build them: x64 on an Apple-silicon workstation goes through Rosetta, which
-intermittently leaves cmake waiting on a child that already exited, and macOS and
-Windows have no local runner at all. `.github/workflows/ports.yml` covers all three
-on native images. That workflow has had no run yet, since nothing has been pushed;
-expect first-run fixups on the macOS and Windows legs in particular.
+The binary cache, measured across the two runs — same packages, cold then warm:
 
-The `versions/` database was verified independently of any build: each port's
-recorded version matches its `vcpkg.json`, `versions/baseline.json` agrees with all
-five, every recorded `git-tree` resolves to a real tree object on `trunk`, and the
-commit the manifest names as its baseline carries the complete database.
+| Leg | Cold (empty feed) | Warm (feed populated) |
+| --- | --- | --- |
+| `x64-linux` (both flavours) | 43 min | 4 min |
+| `arm64-linux` (both flavours) | 26 min | 4½ min |
+| `x64-windows` (both flavours) | 78 min | 4 min |
+| `arm64-android` | 17 min | 2½ min |
+| `x64-android` | 23 min | 3½ min |
+| `arm-android` | 26 min | 3½ min |
+| `arm-linux` | 27 min | 3½ min |
+| `arm64-ios` | 26 min | — |
+| `arm64-ios-simulator` | 24 min | — |
+
+Within a single cold run the desktop pass already restores what the headless pass
+just published — 34 packages on the Linux legs, 29 on Windows — and compiles only
+the gui `qtbase` and the feature-only ports.
+
+Each leg's tarballs are attested; `gh attestation verify` succeeds on both
+`x64-linux` tarballs from the first run.
+
+The `versions/` database is checked independently of any build: each port's
+recorded version matches its `vcpkg.json`, `versions/baseline.json` agrees, and
+every recorded `git-tree` equals the committed tree of its port directory.
 
 ### ffmpeg
 
