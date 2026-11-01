@@ -986,9 +986,11 @@ VM's ext4 for this reason.
 
 ### CI, every triplet
 
-As of the baseline-`2cfff9c` rebuild on 2026-11-01 (runs
+As of the baseline-`2cfff9c` rebuild on 2026-11-01 — runs
 [41328486277](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41328486277)
-and [41335267651](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41335267651)),
+and [41335267651](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41335267651),
+then [41337806622](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41337806622),
+the first with every leg and both flavours green from one commit (`cc5244e`) —
 `tests/verify.sh` passes on all ten legs, with platform-inapplicable checks
 counted as `skip` rather than passed. On `x64-linux`, for example:
 
@@ -1004,10 +1006,10 @@ counted as `skip` rather than passed. On `x64-linux`, for example:
   `openssl-runtime` took effect. Windows gets `qschannelbackend.dll`
 - no Qt library links ICU
 
-The desktop flavour built and passed its presence checks (`Qt6Gui`, `Qt6Widgets`,
-`Qt6Sql`, `Qt6Xml`, sentry) on `x64-linux`, `arm64-linux` and `x64-windows` in the
-first run. Its macOS build is what exposed the `cups` requirement fixed in
-6.11.2#2 — see "Headless Qt on macOS".
+The desktop flavour builds and passes its presence checks (`Qt6Gui`, `Qt6Widgets`,
+`Qt6Sql`, `Qt6Xml`, sentry) on all four desktop legs. Its first macOS build is
+what exposed the `cups` requirement fixed in 6.11.2#2 — see "Headless Qt on
+macOS".
 
 The binary cache, measured across the two runs — same packages, cold then warm:
 
