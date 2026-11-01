@@ -17,8 +17,8 @@
       "port-version": 9
     },
     "qtbase": {
-      "baseline": "6.11.1",
-      "port-version": 4
+      "baseline": "6.11.2",
+      "port-version": 1
     }
   }
 }
