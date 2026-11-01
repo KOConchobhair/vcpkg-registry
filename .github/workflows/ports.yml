@@ -27,9 +27,12 @@ permissions:
   attestations: write
 
 env:
-  # The upstream commit the ports were vendored from, and the baseline
-  # tests/vcpkg.json pins. Ports outside this registry come from here.
-  VCPKG_BASELINE: 3c5d90a305ff00ca841f085a74a7ce74ee777dee
+  # The baseline tests/vcpkg.json pins - and rankone's ci/vcpkg.json, which is
+  # the point: the vcpkg tool's own scripts feed every package's ABI hash, and
+  # lukka/run-vcpkg checks out the consumer's builtin-baseline, so the two must
+  # name the same commit for anything published here to restore there. Ports
+  # outside this registry come from here too.
+  VCPKG_BASELINE: 2cfff9c458d9dcf642e9fa09ba624f9931bb5358
 
 jobs:
   build:
@@ -173,19 +176,28 @@ jobs:
       - name: Package installed tree
         id: pack
         if: success() && github.event_name != 'pull_request'
+        # Two trees on the desktop legs: installed/ is the headless manifest that
+        # verify.sh checks, installed-desktop/ the gui flavour run.sh adds for
+        # rankone's builds. Mobile and embedded legs have only the first.
         run: |
           t="${RUNNER_TEMP}"
           command -v cygpath >/dev/null 2>&1 && t="$(cygpath -u "$t")"
-          d="$t/work/installed/${{ matrix.triplet }}"
-          out="$t/vcpkg-${{ matrix.triplet }}-${GITHUB_SHA:0:7}.tar.gz"
-          tar -czf "$out" -C "$(dirname "$d")" "$(basename "$d")"
-          ls -lh "$out"
-          # tar needs the MSYS path, but the two actions below are Node and need a
-          # native one - handing them /d/a/_temp/... is why the first attempt at
-          # this failed on Windows with "Could not find subject at path". -m keeps
-          # forward slashes, which avoids backslash escaping through YAML.
-          command -v cygpath >/dev/null 2>&1 && out="$(cygpath -m "$out")"
-          echo "path=$out" >> "$GITHUB_OUTPUT"
+          paths=()
+          for flavour in "" -desktop; do
+            d="$t/work/installed${flavour}/${{ matrix.triplet }}"
+            [ -d "$d" ] || continue
+            out="$t/vcpkg-${{ matrix.triplet }}${flavour}-${GITHUB_SHA:0:7}.tar.gz"
+            tar -czf "$out" -C "$(dirname "$d")" "$(basename "$d")"
+            ls -lh "$out"
+            # tar needs the MSYS path, but the two actions below are Node and need
+            # a native one - handing them /d/a/_temp/... is why the first attempt
+            # at this failed on Windows with "Could not find subject at path". -m
+            # keeps forward slashes, which avoids backslash escaping through YAML.
+            command -v cygpath >/dev/null 2>&1 && out="$(cygpath -m "$out")"
+            paths+=("$out")
+          done
+          # Newline-separated; both actions below accept a list in that form.
+          { echo 'path<<EOF'; printf '%s\n' "${paths[@]}"; echo EOF; } >> "$GITHUB_OUTPUT"
 
       - name: Upload installed tree
         if: success() && github.event_name != 'pull_request'

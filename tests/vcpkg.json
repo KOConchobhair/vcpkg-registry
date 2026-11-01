@@ -5,7 +5,7 @@
     "registries": [
       {
         "kind": "git",
-        "baseline": "ea57d219979c3e549840f824d68bae524d6a670c",
+        "baseline": "b733ee79b8655fa0728f79a8b4fa0ad512ae8038",
         "repository": "https://github.com/KOConchobhair/vcpkg-registry",
         "packages": [
           "ffmpeg",
@@ -21,7 +21,7 @@
     ]
   },
   "name": "test",
-  "builtin-baseline": "3c5d90a305ff00ca841f085a74a7ce74ee777dee",
+  "builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
   "dependencies": [
     {
       "name": "amqpcpp",
@@ -170,6 +170,22 @@
         {
           "name": "prometheus-cpp",
           "default-features": false
+        }
+      ]
+    },
+    "sentry": {
+      "$comment": "Same as rankone's ci/vcpkg.json sentry feature, so CI prebuilds what that manifest resolves.",
+      "description": "Enable Sentry crash and error reporting via sentry-native",
+      "dependencies": [
+        "sentry-native",
+        {
+          "$comment": "sentry-native requests curl without default features; ensure a TLS backend for event uploads.",
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "ssl"
+          ],
+          "platform": "!windows"
         }
       ]
     }
