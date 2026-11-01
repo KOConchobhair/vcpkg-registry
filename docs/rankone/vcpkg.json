@@ -1,0 +1,182 @@
+{
+  "$comment": "Proposed replacement for rank-1/rankone ci/vcpkg.json. See docs/rankone-adoption.md for every change against the current file. It assumes this registry is a submodule at ci/vcpkg-registry; adjust overlay-triplets if it lives elsewhere.",
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "roc-sdk",
+  "dependencies": [
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": [
+        "dnn",
+        "features2d",
+        "fs",
+        "intrinsics",
+        "jpeg",
+        "openexr",
+        "openjpeg",
+        "png",
+        "thread",
+        "tiff",
+        "webp"
+      ]
+    },
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": [
+        "async-io",
+        "concurrent",
+        {
+          "name": "dnslookup",
+          "platform": "!ios"
+        },
+        {
+          "name": "framework",
+          "platform": "osx"
+        },
+        {
+          "name": "ioring",
+          "platform": "linux | windows"
+        },
+        "network",
+        {
+          "name": "openssl",
+          "platform": "linux | android"
+        },
+        {
+          "name": "openssl-runtime",
+          "platform": "linux | android"
+        },
+        "pcre2",
+        {
+          "name": "schannel",
+          "platform": "windows"
+        },
+        {
+          "name": "securetransport",
+          "platform": "osx | ios"
+        }
+      ]
+    },
+    "openssl",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "ffmpeg",
+        "ffprobe",
+        "openh264",
+        {
+          "name": "openssl",
+          "platform": "linux | android"
+        }
+      ]
+    }
+  ],
+  "features": {
+    "cuda": {
+      "description": "Enable CUDA/cuDNN support",
+      "dependencies": [
+        {
+          "name": "cudnn",
+          "platform": "linux"
+        },
+        {
+          "name": "ffmpeg",
+          "features": [
+            "nvcodec"
+          ],
+          "platform": "linux | windows"
+        }
+      ]
+    },
+    "gui": {
+      "description": "Enable GUI support via Qt",
+      "dependencies": [
+        {
+          "$comment": "default-features: false is required here, not tidy-up: without it this edge unions qtbase's whole upstream default set back in (icu, libpq, testlib, freetype, harfbuzz, X11) and discards the headless configuration.",
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "gui",
+            "sql",
+            "sql-sqlite",
+            "widgets",
+            "xml"
+          ],
+          "platform": "!ios & !android"
+        }
+      ]
+    },
+    "jetson": {
+      "description": "Enable Jetson hardware video codecs (*_nvmpi) via the registry's jetson ports",
+      "dependencies": [
+        {
+          "name": "ffmpeg",
+          "features": [
+            "nvmpi"
+          ],
+          "platform": "linux & arm64"
+        }
+      ]
+    },
+    "numa": {
+      "description": "Enable NUMA-topology-aware search via libnuma",
+      "dependencies": [
+        {
+          "name": "numactl",
+          "platform": "linux"
+        }
+      ]
+    },
+    "prometheus": {
+      "description": "Enable Prometheus metrics via prometheus-cpp",
+      "dependencies": [
+        {
+          "name": "prometheus-cpp",
+          "default-features": false
+        }
+      ]
+    },
+    "sentry": {
+      "description": "Enable Sentry crash and error reporting via sentry-native",
+      "dependencies": [
+        "sentry-native",
+        {
+          "$comment": "sentry-native requests curl without default features; ensure a TLS backend for event uploads.",
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "ssl"
+          ],
+          "platform": "!windows"
+        }
+      ]
+    }
+  },
+  "overrides": [
+    {
+      "name": "protobuf",
+      "version": "3.19.4"
+    }
+  ],
+  "builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
+  "vcpkg-configuration": {
+    "registries": [
+      {
+        "kind": "git",
+        "repository": "https://github.com/KOConchobhair/vcpkg-registry",
+        "baseline": "b733ee79b8655fa0728f79a8b4fa0ad512ae8038",
+        "packages": [
+          "ffmpeg",
+          "jetson-multimedia-api",
+          "jetson-nvmpi",
+          "opencv4",
+          "qtbase"
+        ]
+      }
+    ],
+    "overlay-triplets": [
+      "./vcpkg-registry/triplets"
+    ]
+  }
+}

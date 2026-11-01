@@ -8,7 +8,7 @@ does not carry at all, plus the overlay triplets that go with them.
 
 | Port | Upstream | Why it is here |
 | ---- | -------- | -------------- |
-| `qtbase` | 6.11.1#1 → **#4** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
+| `qtbase` | 6.11.2#0 → **#1** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; stops forcing `cups` on macOS, which made headless Qt impossible there |
 | `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
@@ -30,16 +30,29 @@ git fetch --filter=blob:none upstream master
 merge and blame against upstream — while fetching file contents only on demand.
 It costs about 50 MB rather than several hundred.
 
+**Adopting this in rank-1/rankone:** see
+[`docs/rankone-adoption.md`](docs/rankone-adoption.md) — the steps, the pros and
+cons, what has to match for the prebuilts to restore, and further work — and
+[`docs/rankone/vcpkg.json`](docs/rankone/vcpkg.json), a drop-in replacement for
+`ci/vcpkg.json`.
+
 `qtbase` and `opencv4` were vendored in a **pure vendor commit** (`e0ad9522b`),
 byte-for-byte from upstream `3c5d90a305ff00ca841f085a74a7ce74ee777dee` — the
-`builtin-baseline` the consuming project pins. Local changes came in the commits
-after it. That split is the point: the vendor commit is the merge base that makes
-every later comparison a clean three-way diff.
+`builtin-baseline` the consuming project pinned then. Local changes came in the
+commits after it. That split is the point: the vendor commit is the merge base
+that makes every later comparison a clean three-way diff.
+
+When rankone moved its baseline to `2cfff9c458d9dcf642e9fa09ba624f9931bb5358`,
+`qtbase` was resynced to that commit's 6.11.2 (`b733ee79b`): upstream's port
+taken wholesale, then the delta re-applied with `git apply -3`. `opencv4` and
+`ffmpeg` were not — rankone pins both through overrides, and `ffmpeg` is held at
+7.0.2 by the nvmpi patch set — so their merge base is still `e0ad9522b`.
 
 ### Seeing the local delta
 
 ```
-git diff e0ad9522b HEAD -- ports/opencv4 ports/qtbase
+git diff 2cfff9c458d9dcf642e9fa09ba624f9931bb5358 HEAD -- ports/qtbase
+git diff e0ad9522b HEAD -- ports/opencv4
 ```
 
 Around 100 added lines across four files, and every change is **purely
@@ -61,7 +74,16 @@ git diff <vendor-sha> <old-head> -- ports/qtbase  # the ROC delta to re-apply
 ```
 
 Then re-apply the `ROC:` blocks and the `vcpkg.json` feature additions, bump
-`port-version`, and re-record the version (see below). For `ffmpeg`, also point
+`port-version`, and re-record the version (see below). Saving the delta as a
+patch first and applying it with `git apply -3` does the re-application as a real
+three-way merge; for the 6.11.2 resync only the version line conflicted.
+
+**Resync whenever rankone moves `builtin-baseline`, and bump `VCPKG_BASELINE` in
+the workflow and `builtin-baseline` in `tests/vcpkg.json` to the same commit.**
+The vcpkg tool's scripts are part of every package's ABI hash, so prebuilts from
+any other baseline do not restore there. Upstream port versions can also move
+under a baseline bump, and a registry left behind serves an *older* port than
+the consumer had before adopting it. For `ffmpeg`, also point
 `ROC_NVMPI_PATCH` at the matching `ffmpegX.Y_nvmpi.patch` — jetson-ffmpeg ships
 6.0, 6.1, 7.0, 7.1, 8.0 and 8.1.
 
@@ -231,8 +253,8 @@ soname; under `linked` it requires the opposite.
 
 ## Triplets
 
-`triplets/` holds the six overlay triplets, four of them moved here from
-`rankone-ffmpeg-jetson/ci/vcpkg/` so the port-specific workarounds in them can be
+`triplets/` holds the ten overlay triplets, four of them moved here from
+`rankone/ci/vcpkg/` so the port-specific workarounds in them can be
 retired as the ports absorb them. **Registries serve ports only** — vcpkg has no
 mechanism to distribute triplets — so a consumer still points
 `overlay-triplets` at a local checkout of this repository (a submodule is the
@@ -361,8 +383,8 @@ now
  future, network, pcre2, securetransport, thread]
 ```
 
-with no `cups`, `gui`, `widgets` or `opengl`. Headless Qt now works on all six
-targets, and `verify.sh` asserts the same "must NOT be built" list everywhere
+with no `cups`, `gui`, `widgets` or `opengl`. Headless Qt now works on every
+target, and `verify.sh` asserts the same "must NOT be built" list everywhere
 instead of carrying a macOS exception.
 
 This is a one-word deletion against a stock port with no behaviour change for
@@ -388,8 +410,8 @@ so the consuming link step still has to set one. That is the job `build_qt6.sh`'
 ## Parity with ci/build_qt6.sh and ci/build_opencv.sh
 
 These ports exist to reproduce, through vcpkg, what
-`rankone-ffmpeg-jetson/ci/build_qt6.sh` and `ci/build_opencv.sh` configure by
-hand. What follows is the full accounting, including what does *not* match.
+`rankone/ci/build_qt6.sh` and `ci/build_opencv.sh` configure by hand. Last
+audited against rankone `a7efe3e71` (2026-11-01). What follows is the full accounting, including what does *not* match.
 
 ### Qt
 
@@ -400,7 +422,9 @@ hand. What follows is the full accounting, including what does *not* match.
 | `-openssl-runtime` | the **`openssl-runtime`** feature, selected on Linux |
 | `-securetransport` (macOS) | `securetransport` feature |
 | `-schannel` (Windows) | the **`schannel`** feature, new here |
-| `-release`, `-shared`, `-no-framework` | triplet: `VCPKG_BUILD_TYPE release`, `VCPKG_LIBRARY_LINKAGE dynamic` for `qtbase` |
+| `-release`, `-shared` | triplet: `VCPKG_BUILD_TYPE release`, `VCPKG_LIBRARY_LINKAGE dynamic` for `qtbase` |
+| `-framework` on macOS, `-no-framework` elsewhere | the `framework` feature, selected on `osx` — see "Frameworks". The script switched from `-no-framework` everywhere when the SDK started shipping frameworks (rankone #4431) |
+| `perl` patch to `qyieldcpu.h` (QTBUG-145239, macOS 26.4 SDK) | **not needed** — the fix is already upstream in 6.11.1 and 6.11.2; only the script's 6.8.2 lacks it |
 | `-R /LONG/ENOUGH/TO/REPLACE` | triplet: `VCPKG_FIXUP_ELF_RPATH ON` |
 | `-nomake examples -nomake tests` | the port already does this |
 | `-qt-pcre`, `-qt-zlib` | the `pcre2` feature and the `zlib` dependency — vcpkg's builds rather than Qt's bundled copies |
@@ -498,8 +522,8 @@ consumer of these artifacts that never calls it, gets upstream's default pool.
 
 ### What this registry deliberately does not cover
 
-Audited against everything in `rankone-ffmpeg-jetson/ci`, not just the two
-dependency scripts:
+Audited against everything in `rankone/ci`, not just the two dependency
+scripts:
 
 - **`build_doxygen.sh`, `build_mono.sh`, `build_swig.sh`** build host tooling —
   Doxygen for docs, Mono for the C# bindings runtime, SWIG for generating them.
@@ -508,14 +532,22 @@ dependency scripts:
   `flex`/`bison` that used to sit in `tests/apt-packages.txt` are Doxygen's
   requirement, not vcpkg's — that is how they got there.
 - **`Toolchain-Ubuntu-gnueabihf.cmake`** is a sample file for 32-bit ARM. No
-  shipped SDK artifact is armhf, so there is no `arm-linux` triplet here.
+  shipped SDK artifact is armhf; the `arm-linux` triplet below exists for
+  embedded boards, not to match that file.
+- **`Linux-ARM64-Legacy`**, the buildbot worker added in rankone #4798, runs
+  Ubuntu 20.04. Linux artifacts here are built on 22.04 and need glibc 2.35, so
+  they cannot serve a 20.04 target. That builder uses the hand-built trees, not
+  vcpkg, so nothing breaks today; it matters only if buildbot moves to vcpkg.
+- **JetPack 5 and SNPE** were removed from rankone (#4798, #4555). Nothing here
+  depended on either: `jetson-multimedia-api` is L4T 36.4, which is JetPack 6.
 - **CPU-baseline flavours** — `fma3` vs `legacy` on x64, `v8a` vs `v8.2a` on
   arm64 — are not triplets. `master.cfg` names no vcpkg triplet at all: those
   variants are buildbot workers and the SDK's own CMake presets, and
   `linux_x64` and `linux_x64_legacy` share one preset. Neither `build_qt6.sh` nor
   `build_opencv.sh` passes `-march`, `CPU_BASELINE` or anything similar.
 
-Those two gaps are now closed, along with two targets that were not in the
+The CPU-baseline point still stands. The simulator and the emulator are now
+covered, along with two targets that were not in the
 shipping list but are wanted: `arm-android` (armeabi-v7a, legacy devices) and
 32-bit ARM Linux for embedded boards. Each needed a triplet and a CI leg and no
 port changes at all, which is the useful part — the simulator and the emulator
@@ -544,8 +576,9 @@ direction.
   feature, so it is still built and still named by `find_dependency(flatbuffers
   CONFIG)` in the generated config. Removing that would mean changing the feature's
   dependency list, which is a larger port change than the flag is worth.
-- **Versions differ.** These ports are OpenCV 4.12.0 and Qt 6.11.1, from the
-  pinned baseline; the scripts build 4.8.1 and 6.8.2.
+- **Versions differ.** These ports are OpenCV 4.12.0 and Qt 6.11.2; the scripts
+  build 4.8.1 and 6.8.2. rankone's `ci/vcpkg.json` pins OpenCV 4.8.0#22 by
+  override, so adopting this registry is also an OpenCV upgrade for its CI.
 
 ## Consuming this registry
 
@@ -558,7 +591,7 @@ Everything lives in that one file, so there is no `vcpkg-configuration.json`.
 `vcpkg-configuration` object adds this registry on top of it:
 
 ```json
-"builtin-baseline": "3c5d90a305ff00ca841f085a74a7ce74ee777dee",
+"builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
 "vcpkg-configuration": {
   "registries": [
     {
@@ -596,17 +629,19 @@ depends on `amqpcpp` and `libuv` for exactly this reason: neither is in the
 
 ```
 ffmpeg[...]:arm64-linux@7.0.2#8   -- git+/registry@111c5649...
-opencv4[...]:arm64-linux@4.12.0#8 -- git+/registry@8695c0ae...
-qtbase[...]:arm64-linux@6.11.1#2  -- git+/registry@298d2167...
+opencv4[...]:arm64-linux@4.12.0#9 -- git+/registry@09539bf6...
+qtbase[...]:arm64-linux@6.11.2#1  -- git+/registry@3c15ccb3...
 amqpcpp:arm64-linux@4.3.27
 libuv:arm64-linux@1.52.1
-openssl:arm64-linux@3.6.3
+openssl:arm64-linux@3.6.5#1
 protobuf:arm64-linux@3.19.4
 ```
 
 ### Changes ci/vcpkg.json needs
 
-Line-by-line against the file as it stands today. Items 1–5 are **required** —
+[`docs/rankone/vcpkg.json`](docs/rankone/vcpkg.json) is the current file with
+all of these applied, and [`docs/rankone-adoption.md`](docs/rankone-adoption.md)
+walks through adopting it. Line-by-line against the file as it stands today. Items 1–5 are **required** —
 without them the build either fails to resolve or silently produces something
 other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 
@@ -615,7 +650,7 @@ other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 | 1 | **Add a `registries` array to the existing `vcpkg-configuration` block**, with this registry and `packages`: `ffmpeg`, `jetson-multimedia-api`, `jetson-nvmpi`, `opencv4`, `qtbase`. Keep `builtin-baseline` as it is. | Nothing here is used otherwise. That block already holds `overlay-triplets`, so this extends it rather than adding it. |
 | 2 | **Delete the `opencv4` override** (`4.8.0#22`) | This registry serves 4.12.0#9. An override naming a version the authoritative registry does not have fails to resolve. |
 | 3 | **Delete the `ffmpeg` override** (`7.0.2#7`) | Required, not merely redundant: this registry serves `7.0.2#8`, so an override naming `#7` no longer resolves. It was renumbered precisely so a modified port stops claiming upstream's identifier. |
-| 4 | **Add `features2d`, `intrinsics`, `fs`, `thread` to the `opencv4` features** | The four silent ones. `features2d` is newly a feature; the other three are upstream defaults that the existing `"default-features": false` was already discarding. `intrinsics` is the expensive one — it maps to `CV_ENABLE_INTRINSICS`, so without it OpenCV has no SSE/AVX or NEON code paths at all. |
+| 4 | **Add `features2d`, `intrinsics`, `fs`, `thread` to the `opencv4` features** | The four silent ones. `features2d` is newly a feature. The other three are not features at all in the 4.8.0#22 rankone pins today, so they are on there — but they are upstream *defaults* at 4.12.0, and the existing `"default-features": false` would start discarding them the moment the version moves. `intrinsics` is the expensive one — it maps to `CV_ENABLE_INTRINSICS`, so without it OpenCV has no SSE/AVX or NEON code paths at all. |
 | 5 | **Add `"default-features": false` to the `qtbase` edge inside the `gui` feature** | The most consequential line in this list. Without it, enabling `gui` discards the headless configuration entirely and unions in `icu`, `libpq`, `testlib`, `freetype`, `harfbuzz` and the X11 stack. Measured under "`default-features: false` has to be on *every* edge". |
 | 6 | **Collapse the two `qtbase` entries into one**, with the TLS and async-io backends as platform-qualified Feature Objects | Today there are `osx` and `!osx` entries, so Windows takes the `!osx` branch and links OpenSSL even though **`schannel`**, new in this registry's port, gives it a native stack. One entry covers all three platforms — see "TLS backends" for the exact block. |
 | 7 | **Point `overlay-triplets` at this repository's `triplets/`** and delete `ci/vcpkg/` | Optional for correctness, **required for the binary cache**: triplet file contents feed the ABI hash, so different triplets mean nothing restores. See "Triplets", and "Consuming the binary cache" below. Retires the `WITH_CAROTENE`/`WITH_MSMF` hacks and adds `-fvisibility=hidden`. |
@@ -647,8 +682,8 @@ intermediate revisions:
 
 | Port | Upstream | Here |
 | ---- | -------- | ---- |
-| `qtbase` | 6.11.1#1 | 6.11.1#4 |
-| `opencv4` | 4.12.0#7 | 4.12.0#8 |
+| `qtbase` | 6.11.2#0 | 6.11.2#1 (6.11.1#4 before the resync, still recorded) |
+| `opencv4` | 4.12.0#7 | 4.12.0#9 (#8 was pushed on 2026-08-14 and its entry *replaced* by #9 a day later, rather than kept — the one exception to the rule below) |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
 | `jetson-nvmpi` | — | 3.10.0#0 |
@@ -671,8 +706,12 @@ then on, a change to a port means a new `port-version`.
 
 `.github/workflows/ports.yml` is the gate: on every push and pull request it builds
 `tests/vcpkg.json` on a native runner for **every triplet this registry ships**, and
-runs `tests/verify.sh` on the result. All runner images used are free for public
-repositories:
+runs `tests/verify.sh` on the result. On the four desktop triplets it then builds
+the **desktop flavour** too — the same manifest with the `gui`, `numa`,
+`prometheus` and `sentry` features (and `cuda` on Windows) that rankone's own
+builds turn on — so the binary cache holds the `qtbase[gui,…]` rankone actually
+requests rather than only the headless one it never does. Both trees are
+packaged and attested. All runner images used are free for public repositories:
 
 | Triplet | Runner | Host triplet |
 | ------- | ------ | ------------ |
@@ -692,7 +731,7 @@ building — Android and iOS binaries cannot run on the runner, and vcpkg needs 
 tools (moc, and the host qtbase behind it) it can actually execute.
 
 `fail-fast: false`, so one platform breaking still tells you about the others.
-`tests/run.sh` is the single implementation on all six — the workflow runs it under
+`tests/run.sh` is the single implementation on every leg — the workflow runs it under
 Git Bash on Windows and converts the Actions-supplied paths with `cygpath`.
 `tests/verify.sh` adapts its file naming and inspection tooling per platform, and
 its central check becomes *"did this platform produce its own TLS backend and not

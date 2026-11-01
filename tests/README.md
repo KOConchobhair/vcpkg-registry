@@ -24,7 +24,13 @@ There is no classic-mode path here and none is wanted.
 - **`consumer`** (the default) resolves through the manifest's own
   `vcpkg-configuration` — this registry over git, the builtin registry at
   `builtin-baseline` for everything else — then builds and verifies. This is the
-  only mode that exercises `versions/`, and it is what CI runs.
+  only mode that exercises `versions/`, and it is what CI runs. On the four
+  desktop triplets it then installs the manifest a second time into
+  `installed-desktop/`, with the features rankone's builds enable (`gui`, `numa`,
+  `prometheus`, `sentry`, plus `cuda` on Windows). That pass is for the binary
+  cache — a cached package is keyed on its feature set, and rankone never asks
+  for headless Qt — so it gets a presence check rather than `verify.sh`, whose
+  assertions are about the headless tree. `DESKTOP_FEATURES=` (empty) skips it.
 - **`resolve`** is the same path, stopping after resolution. Use it to check a
   feature graph or a freshly recorded version in seconds.
 - **`overlay`** swaps in `--overlay-ports` so it acts on the working tree with no
@@ -69,7 +75,7 @@ plugin — `qopensslbackend`, `qsecuretransportbackend`, `qschannelbackend`. Che
 that cannot be expressed on a platform print `skip` and are counted, rather than
 silently passing.
 
-All six legs are green in CI and stay that way on every push. `arm64-linux` is
+Every leg is green in CI and stay that way on every push. `arm64-linux` is
 additionally exercised locally, in the container, which is the only environment
 that can validate `apt-packages.txt` — see below.
 
