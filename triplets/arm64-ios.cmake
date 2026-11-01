@@ -38,6 +38,13 @@ if(PORT MATCHES "opencv")
 endif()
 
 set(VCPKG_CMAKE_SYSTEM_NAME iOS)
+# Matches IPHONEOS_DEPLOYMENT_TARGET=18.0 in rankone's ci/master.cfg, which builds
+# both the device and the simulator SDK at 18.0. Without it the minimum OS is
+# whatever the runner's Xcode SDK defaults to, so the same commit built on a newer
+# image would quietly raise the floor and the SDK link would warn "built for newer
+# iOS version than being linked". Pinning it also keeps the triplet - and so the
+# ABI hash - independent of which Xcode happened to build it.
+set(VCPKG_OSX_DEPLOYMENT_TARGET 18.0)
 
 # Autotools ports (libb2, which qtbase requires on every non-Windows platform) must
 # be told they are cross-compiling, or configure runs the test binaries it just
