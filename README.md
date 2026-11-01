@@ -717,11 +717,11 @@ packaged and attested. All runner images used are free for public repositories:
 | ------- | ------ | ------------ |
 | `x64-linux` | `ubuntu-22.04` | — |
 | `arm64-linux` | `ubuntu-22.04-arm` | — |
-| `arm64-osx` | `macos-14` | — |
+| `arm64-osx` | `macos-15` | — |
 | `x64-windows` | `windows-2022` | — |
 | `arm64-android` | `ubuntu-22.04` | `x64-linux` |
-| `arm64-ios` | `macos-14` | `arm64-osx` |
-| `arm64-ios-simulator` | `macos-14` | `arm64-osx` |
+| `arm64-ios` | `macos-15` | `arm64-osx` |
+| `arm64-ios-simulator` | `macos-15` | `arm64-osx` |
 | `x64-android` | `ubuntu-22.04` | `x64-linux` |
 | `arm-android` | `ubuntu-22.04` | `x64-linux` |
 | `arm-linux` | `ubuntu-22.04` | `x64-linux` |
@@ -812,7 +812,7 @@ reused. So all four have to line up:
    above)
 3. use **this registry's `triplets/`** — step 7, which is why that row is only
    optional for correctness
-4. build on the same compiler as the publishing CI (`ubuntu-22.04`, `macos-14`,
+4. build on the same compiler as the publishing CI (`ubuntu-22.04`, `macos-15`,
    `windows-2022`); a different runner image is a different compiler, and a
    different ABI
 

@@ -188,7 +188,7 @@ differing input means a clean 0% hit rate and no error.
 | Port versions and feature sets | **Matches**, measured — see step 2 |
 | Triplet file contents | Matches once `overlay-triplets` points at this repo's `triplets/` |
 | vcpkg tool scripts | Matches while `builtin-baseline` equals this registry's `VCPKG_BASELINE`. `lukka/run-vcpkg@v11` with no inputs checks out the manifest's `builtin-baseline`, and `scripts/` is part of every hash. **Both are `2cfff9c` today, and must be bumped together** |
-| Compiler | **Unverified.** The hash includes a SHA-1 of the compiler *binaries* (`scripts/detect_compiler/CMakeLists.txt`), not just the version. The publisher builds on GitHub's `ubuntu-22.04`, `ubuntu-22.04-arm`, `macos-14` and `windows-2022` |
+| Compiler | **Unverified.** The hash includes a SHA-1 of the compiler *binaries* (`scripts/detect_compiler/CMakeLists.txt`), not just the version. The publisher builds on GitHub's `ubuntu-22.04`, `ubuntu-22.04-arm`, `macos-15` and `windows-2022` |
 
 Per rankone runner, the compiler row works out like this:
 
@@ -197,7 +197,7 @@ Per rankone runner, the compiler row works out like this:
   are identical. Step 4 answers it.
 - **`roc-10cpu-macos`, `roc-4vcpu-windows-2022`, `roc-4vcpu-ubuntu-2204`:** hits
   only if these run the same image as the publishing legs — that is, if they are
-  GitHub-hosted larger runners on `macos-14` / `windows-2022` / `ubuntu-22.04`.
+  GitHub-hosted larger runners on `macos-15` / `windows-2022` / `ubuntu-22.04`.
   On macOS the hash follows the Xcode that `xcrun` resolves to, so a different
   Xcode is a guaranteed miss.
 - **Blacksmith `ubuntu-2404` (enterprise-search):** **no hits** — gcc 13 against
@@ -236,6 +236,12 @@ Per rankone runner, the compiler row works out like this:
   resynced first — the bump to `2cfff9c` is exactly what forced the qtbase
   6.11.1 → 6.11.2 resync here. Until it is, prebuilts stop matching, and a stale
   registry can hand rankone an older Qt than the baseline would.
+- **Runner image churn re-keys the cache.** The compiler is hashed by its bytes,
+  so when GitHub retires an image the prebuilts for it stop matching anything
+  until both sides move. It already happened once: `macos-14` was retired on
+  2026-11-02, mid-rebuild, and the macOS legs moved to `macos-15`. `ubuntu-22.04`
+  will go the same way, and when it does the Blacksmith 22.04 legs and this
+  registry's Linux legs have to move together.
 - **Owning ports.** A registry port replaces upstream's entirely. Upstream fixes
   to `qtbase`, `opencv4` and `ffmpeg` arrive only when someone resyncs. The ROC
   delta is kept small and additive (about 50 lines per port, in `# ROC:` blocks)

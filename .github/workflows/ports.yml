@@ -49,18 +49,23 @@ jobs:
           # runner image it describes.
           - { runner: ubuntu-22.04, triplet: x64-linux }
           - { runner: ubuntu-22.04-arm, triplet: arm64-linux }
-          - { runner: macos-14, triplet: arm64-osx }
+          # macos-15, pinned rather than macos-latest: the image fixes the Xcode,
+          # and the compiler's own bytes are part of every package's ABI hash, so
+          # a floating label would silently re-key the whole macOS cache - for
+          # this feed and for any consumer matching it. macos-14 was retired on
+          # 2026-11-02 (actions/runner-images#13518).
+          - { runner: macos-15, triplet: arm64-osx }
           - { runner: windows-2022, triplet: x64-windows }
           # Cross targets: host_triplet is the machine doing the building, since
           # android and ios binaries cannot run on the runner and vcpkg needs host
           # tools (moc, and the host qtbase behind it) it can execute.
           # ANDROID_NDK_HOME comes from the runner image itself; no step sets it.
           - { runner: ubuntu-22.04, triplet: arm64-android, host_triplet: x64-linux }
-          - { runner: macos-14, triplet: arm64-ios, host_triplet: arm64-osx }
+          - { runner: macos-15, triplet: arm64-ios, host_triplet: arm64-osx }
           # The remaining shipped SDK targets. The simulator and the emulator are
           # SDK/ABI variants of the two above, not new platforms, so they need no
           # port changes - see "What this registry deliberately does not cover".
-          - { runner: macos-14, triplet: arm64-ios-simulator, host_triplet: arm64-osx }
+          - { runner: macos-15, triplet: arm64-ios-simulator, host_triplet: arm64-osx }
           - { runner: ubuntu-22.04, triplet: x64-android, host_triplet: x64-linux }
           - { runner: ubuntu-22.04, triplet: arm-android, host_triplet: x64-linux }
           # The only leg with no runner of its own architecture - armv7 hardware

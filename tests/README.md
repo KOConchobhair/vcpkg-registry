@@ -56,11 +56,11 @@ registry plus `verify.sh`. Every runner image used is free for public repositori
 | ------- | ------ | ----- |
 | `x64-linux` | `ubuntu-22.04` | |
 | `arm64-linux` | `ubuntu-22.04-arm` | also covered locally |
-| `arm64-osx` | `macos-14` | prerequisites via `brew`; Qt frameworks |
+| `arm64-osx` | `macos-15` | prerequisites via `brew`; Qt frameworks |
 | `x64-windows` | `windows-2022` | Git Bash + `cygpath`; MSVC preinstalled |
 | `arm64-android` | `ubuntu-22.04` | cross, host `x64-linux`; needs `ANDROID_NDK_HOME` |
-| `arm64-ios` | `macos-14` | cross, host `arm64-osx`; everything static |
-| `arm64-ios-simulator` | `macos-14` | cross, host `arm64-osx`; simulator SDK |
+| `arm64-ios` | `macos-15` | cross, host `arm64-osx`; everything static |
+| `arm64-ios-simulator` | `macos-15` | cross, host `arm64-osx`; simulator SDK |
 | `x64-android` | `ubuntu-22.04` | cross, host `x64-linux`; emulator |
 | `arm-android` | `ubuntu-22.04` | cross, host `x64-linux`; armeabi-v7a, NEON forced on by NDK r27 |
 | `arm-linux` | `ubuntu-22.04` | cross, host `x64-linux`; armhf via Ubuntu's gcc, CI only |
