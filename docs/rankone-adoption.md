@@ -47,7 +47,7 @@ These are behaviour changes, not just plumbing. Each needs a look in review.
 | OpenCV modules | `dnn` and the codecs; every other module is always built, because 4.8.0's port cannot turn them off | `features2d` added; `calib3d`, `flann`, `objdetect`, `photo`, `stitching`, `video` off, as in `build_opencv.sh` |
 | OpenCV symbols | default visibility | `-fvisibility=hidden` |
 | CUDA (`cuda` feature) | `cudnn` on Linux; #4804 drops it and takes CUTLASS 4.8.0 from a submodule | `nvidia-cutlass` 4.8.0#1 from this registry: upstream's port with cuBLAS and cuDNN off, so no system cuDNN or cuBLAS anywhere |
-| AMQP-CPP, libuv | `AMQP-CPP` (v4.3.19) and `libuv` (`730e07e`, May 2022, between v1.44.1 and v1.44.2) **submodules**, `add_subdirectory`'d whenever `ROC_WITH_AMQP` is on | upstream vcpkg's `amqpcpp` 4.3.27 and `libuv` 1.52.1 behind a new `amqp` feature; both submodules can go — see "Dropping the AMQP-CPP and libuv submodules" |
+| AMQP-CPP, libuv | `AMQP-CPP` (v4.3.19) and `libuv` (`730e07e`, May 2022, between v1.44.1 and v1.44.2) **submodules**, `add_subdirectory`'d whenever `ROC_WITH_AMQP` is on | `amqpcpp` 4.3.27 (upstream vcpkg; the latest 4.x) and `libuv` 1.53.0 (this registry, upstream's port unmodified; the latest 1.x) behind a new `amqp` feature; both submodules can go — see "Dropping the AMQP-CPP and libuv submodules" |
 | FFmpeg | 7.0.2#7 via override | 7.0.2#8: the same FFmpeg plus `nvmpi` and `cuda-llvm` features, and native TLS per platform |
 | OpenSSL linkage on macOS, Windows | static | **dynamic**, like Linux — the LGPL-set rule is one list in every triplet |
 | Triplets | `ci/vcpkg/*.cmake` (4) | this repo's `triplets/` (10) |
@@ -102,7 +102,8 @@ git rm -r ci/vcpkg        # the old triplets; the registry's replace them
 with exactly these changes:
 
 1. a `registries` entry for this repository, serving `ffmpeg`,
-   `jetson-multimedia-api`, `jetson-nvmpi`, `nvidia-cutlass`, `opencv4`, `qtbase`
+   `jetson-multimedia-api`, `jetson-nvmpi`, `libuv`, `nvidia-cutlass`,
+   `opencv4`, `qtbase`
 2. `overlay-triplets` → `./vcpkg-registry/triplets`
 3. the `opencv4` and `ffmpeg` overrides deleted — the registry serves 4.12.0#9
    and 7.0.2#8, and an override naming a version the registry lacks does not
@@ -152,12 +153,14 @@ Every Linux preset that goes through vcpkg resolves `ROC_WITH_AMQP=ON`, through
 `leak-check-linux-x64`, `evals-linux-cuda-ci` and both `enterprise-search` ones.
 So does every Linux buildbot preset, which is where the catch is (below).
 
-Upstream vcpkg's ports need nothing from this registry:
+Neither port needs a delta. `amqpcpp` comes from upstream vcpkg, and `libuv`
+from this registry, which carries upstream's 1.53.0 port unmodified because the
+`2cfff9c` baseline only has 1.52.1:
 
 - `amqpcpp` 4.3.27 is static-only and sets `AMQP-CPP_LINUX_TCP` on Linux, as
   `CMakeLists.txt` does today. Its config exports the bare `amqpcpp` target, and
   installs `amqpcpp.h` and `amqpcpp/libuv.h`, the two headers the sources include.
-- `libuv` 1.52.1 is static on these triplets, exporting `libuv::uv_a`.
+- `libuv` 1.53.0 is static on these triplets, exporting `libuv::uv_a`.
 - vcpkg's Linux toolchain adds `-fPIC` to every port, so the
   `POSITION_INDEPENDENT_CODE` properties set on both today are no longer needed.
 
@@ -195,14 +198,15 @@ nothing to find there. There are three ways to handle it, in order of preference
 
 1. **Move buildbot onto vcpkg** (further work 6). That ends the problem for good.
 2. **Fall back to `FetchContent` when `find_package` misses**, pinned to the
-   versions vcpkg serves (`v4.3.27`, `v1.52.1`). There are still no submodules,
+   versions vcpkg serves (`v4.3.27`, `v1.53.0`). There are still no submodules,
    but buildbot fetches the sources at configure time, so the workers need
    network access to GitHub.
 3. **Install both on the buildbot images** and point `CMAKE_PREFIX_PATH` at
    them.
 
-**Versions move:** AMQP-CPP 4.3.19 → 4.3.27, and libuv from a May 2022 commit
-to 1.52.1. Both are patch- or minor-level, and libuv keeps API and ABI
+**Versions move, to the latest of each:** AMQP-CPP 4.3.19 → 4.3.27 (the
+latest 4.x release, from 2024-10-25), and libuv from a May 2022 commit to
+1.53.0 (released 2026-09-24). Both are patch- or minor-level, and libuv keeps API and ABI
 compatibility within 1.x. Still, run `enterprise-integration-tests.yml` on the
 PR, since those tests run the worker against a RabbitMQ container.
 

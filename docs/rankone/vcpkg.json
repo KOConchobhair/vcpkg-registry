@@ -184,6 +184,7 @@
           "ffmpeg",
           "jetson-multimedia-api",
           "jetson-nvmpi",
+          "libuv",
           "nvidia-cutlass",
           "opencv4",
           "qtbase"
