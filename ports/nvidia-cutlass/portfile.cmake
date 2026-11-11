@@ -1,14 +1,15 @@
 # ROC: upstream's port with cuBLAS and cuDNN off, so CUDA builds need no system
-# cuDNN (rank-1/rankone#4804 dropped it). Only CUTLASS's tests and profiler use
-# either library, and neither is built here. Upstream's ON also stamps
-# CUTLASS_ENABLE_CUBLAS=1 / CUTLASS_ENABLE_CUDNN=1 on the exported target, and in
-# v4.8.x only tools/profiler headers read those. The delta: no cudnn dependency in
+# cuDNN or cuBLAS (rank-1/rankone#4804 dropped both). Only CUTLASS's tests,
+# examples and profiler use either library, and none is built here. Upstream's ON
+# also leaks into the exported targets: CUTLASS gets CUTLASS_ENABLE_CUBLAS=1 and
+# CUTLASS_ENABLE_CUDNN=1 (in v4.8.x read only by those three), and
+# cutlass_tools_util_includes links cublas. The delta: no cudnn dependency in
 # vcpkg.json, no find_package(CUDNN) block below, and the two options OFF.
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO NVIDIA/cutlass
     REF "v${VERSION}"
-    SHA512 cbdf86439281f5c037eebe95aa2a74fe02a384badeda772b95c44e6e64b42d1e009253836dd1139471d7c4a7a7264303ecf8a3a114aacc8ba47aa39c542d57ab
+    SHA512 8ccc6ef98e3de7cd37708d3586c8a7439de2978ebfcf6c4755c20a0f59e5e8213b057d81575b992631898828c59db6ee7ecf94764e2dd61951e5268c8bf2e679
     HEAD_REF main
 )
 
