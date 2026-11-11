@@ -12,6 +12,10 @@
       "baseline": "3.10.0",
       "port-version": 0
     },
+    "nvidia-cutlass": {
+      "baseline": "4.8.0",
+      "port-version": 1
+    },
     "opencv4": {
       "baseline": "4.12.0",
       "port-version": 9
