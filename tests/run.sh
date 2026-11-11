@@ -391,9 +391,15 @@ check_cuda_tree() {
   else
     echo "  FAIL  nvidia-cutlass headers or CMake targets missing" >&2; fail=1
   fi
-  if grep -q 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" 2>/dev/null; then
+  # tools/util's link is the generator expression $<$<BOOL:${CUTLASS_ENABLE_CUBLAS}>:cublas>,
+  # exported as "\$<\$<BOOL:OFF>:cublas>" when the option is off - which links
+  # nothing, so that form is stripped before looking for cublas.
+  local leaks
+  leaks="$(sed 's/\\\{0,1\}\$<\\\{0,1\}\$<BOOL:OFF>:cublas>//g' "$targets" 2>/dev/null \
+             | grep -n 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' || true)"
+  if [ -n "$leaks" ]; then
     echo "  FAIL  NvidiaCutlassTargets.cmake still references cuBLAS/cuDNN:" >&2
-    grep -n 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" >&2; fail=1
+    echo "$leaks" >&2; fail=1
   else
     echo "  ok    nvidia-cutlass without cuBLAS/cuDNN"
   fi
