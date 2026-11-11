@@ -119,6 +119,34 @@ if [ ! -x "$VCPKG" ]; then
   fi
 fi
 
+# pcre2[jit] (via qtbase[pcre2]) downloads its sljit gitlink from the GitHub REST
+# API with no token (upstream #54564, in vcpkg since 2026-10-23):
+#   https://api.github.com/repos/PCRE2Project/pcre2/contents/deps/sljit?ref=pcre2-<v>
+# Anonymous API calls get 60 an hour per IP, and runners share IPs, so a cold
+# build fails with "curl operation failed with response code 403" - arm64-osx in
+# run 43107686312. Fetching it here with a token, under the name the port uses,
+# means vcpkg finds a file whose SHA512 it already pins and skips the network.
+# The authenticated response is byte-identical to the anonymous one.
+#
+# Best effort: without GITHUB_TOKEN, or if this fails, vcpkg downloads as usual.
+# Remove once the port sends a token or stops using the API.
+seed_pcre2_sljit() {
+  local manifest="$VCPKG_ROOT/ports/pcre2/vcpkg.json" ver dst
+  [ -n "${GITHUB_TOKEN:-}" ] && [ -f "$manifest" ] || return 0
+  grep -q 'api.github.com/repos/PCRE2Project/pcre2/contents/deps/sljit' \
+    "$VCPKG_ROOT/ports/pcre2/portfile.cmake" || return 0
+  ver="$(sed -n 's/^ *"version[^"]*": *"\([^"]*\)".*/\1/p' "$manifest" | head -1)"
+  dst="$VCPKG_DOWNLOADS/pcre2-pcre2-${ver}-sljit-gitlink.json"
+  [ -n "$ver" ] && [ ! -s "$dst" ] || return 0
+  if curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -o "$dst.part" \
+       "https://api.github.com/repos/PCRE2Project/pcre2/contents/deps/sljit?ref=pcre2-${ver}"; then
+    mv "$dst.part" "$dst" && echo "=== seeded $(basename "$dst") with an authenticated fetch ==="
+  else
+    rm -f "$dst.part"; echo "=== could not seed the pcre2 sljit gitlink; vcpkg will try ===" >&2
+  fi
+}
+seed_pcre2_sljit
+
 # NuGet binary cache. In CI this is the only binary cache: the list is prefixed
 # with "clear", which drops the default files provider.
 #

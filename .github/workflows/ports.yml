@@ -167,6 +167,9 @@ jobs:
           VCPKG_DOWNLOADS: ${{ runner.temp }}/downloads
           VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/cache
           REGISTRY_HEAD: ${{ github.sha }}
+          # For run.sh's authenticated fetch of pcre2's sljit gitlink, which the
+          # port takes from the GitHub API anonymously; see seed_pcre2_sljit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Empty for the four native triplets, so run.sh falls back to the target.
           HOST_TRIPLET: ${{ matrix.host_triplet }}
           # GitHub Packages NuGet feeds are scoped to the owner, not to a

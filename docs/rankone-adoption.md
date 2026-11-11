@@ -370,8 +370,10 @@ Roughly in order of value for effort:
    (step 2a). That is the end state the
    parity work points at, and the moment CI and release stop differing.
 7. **Prune the feed.** GitHub Packages has no eviction, and every baseline bump
-   adds a full set of packages per triplet. A scheduled job that deletes package
-   versions older than the current baseline's would keep it bounded.
+   adds a full set of packages per triplet. Public packages cost nothing, so
+   this is tidiness rather than money. `tools/prune-feed.py` deletes every
+   version whose ABI the latest green `trunk` run did not use (dry run unless
+   `--apply`); running it on a schedule is the remaining step.
 8. **Resync opencv4 to upstream 4.14.0.** Upstream moved on at `2cfff9c`; the
    registry stays on 4.12.0 for now because rankone overrides OpenCV anyway and
    the module-dependency declarations would have to be re-derived from 4.14.0's
