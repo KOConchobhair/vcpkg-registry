@@ -1002,7 +1002,19 @@ and [41335267651](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/4
 then [41337806622](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/41337806622),
 the first with every leg and both flavours green from one commit (`cc5244e`) —
 `tests/verify.sh` passes on all ten legs, with platform-inapplicable checks
-counted as `skip` rather than passed. On `x64-linux`, for example:
+counted as `skip` rather than passed.
+
+`nvidia-cutlass` 4.8.0#1 joined on 2026-11-11 in run
+[43090674783](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/43090674783)
+(`8ad9ff2`), all 11 jobs green. The `cuda` checks pass on `x64-windows`
+(desktop flavour) and on `x64-linux` and `arm64-linux` (cuda flavour): the
+CUTLASS headers and targets are present, the exported targets carry no
+`CUTLASS_ENABLE_CUBLAS`/`CUTLASS_ENABLE_CUDNN` define and no live `cublas` link
+(only `$<$<BOOL:OFF>:cublas>`), and `ffnvcodec` is installed. The port itself
+builds in 8–9 s on Linux, 24 s on Windows; on `x64-linux`, `ffmpeg[nvcodec]`
+took 4.7 min cold.
+
+On `x64-linux`, for example:
 
 - `opencv4 4.12.0#9` has `core`, `imgproc`, `imgcodecs`, `dnn`, `features2d`, and
   none of `calib3d`, `flann`, `objdetect`, `photo`, `stitching`, `video`, `gapi`,
