@@ -73,6 +73,13 @@
     }
   ],
   "features": {
+    "amqp": {
+      "description": "Enable AMQP gallery and enterprise worker support via AMQP-CPP and libuv, in place of the AMQP-CPP and libuv submodules",
+      "dependencies": [
+        "amqpcpp",
+        "libuv"
+      ]
+    },
     "cuda": {
       "description": "Enable CUDA support",
       "dependencies": [

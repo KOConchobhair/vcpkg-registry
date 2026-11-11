@@ -640,7 +640,9 @@ Resolution is visible in the output, which is the easiest way to show which
 registry served what — anything annotated `git+` came from here, everything else
 from the builtin registry at the pinned baseline. `tests/vcpkg.json` deliberately
 depends on `amqpcpp` and `libuv` for exactly this reason: neither is in the
-`packages` list, so both have to come from upstream.
+`packages` list, so both have to come from upstream. They are also real
+rankone dependencies, replacing its `AMQP-CPP` and `libuv` submodules, so the
+headless pass prebuilds them on every leg except iOS and Android.
 
 ```
 ffmpeg[...]:arm64-linux@7.0.2#8   -- git+/registry@111c5649...
@@ -671,8 +673,18 @@ other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 | 7 | **Point `overlay-triplets` at this repository's `triplets/`** and delete `ci/vcpkg/` | Optional for correctness, **required for the binary cache**: triplet file contents feed the ABI hash, so different triplets mean nothing restores. See "Triplets", and "Consuming the binary cache" below. Retires the `WITH_CAROTENE`/`WITH_MSMF` hacks and adds `-fvisibility=hidden`. |
 | 8 | **Keep the `protobuf` override** (`3.19.4`) | Kept deliberately — `tests/vcpkg.json` carries it, so CI tests it. Note the risk: `opencv4` 4.12.0's `dnn` is patched against a far newer protobuf, and the builds here that passed used the baseline's 6.33.4. Whether 4.12.0 compiles against 3.19.4 is unproven and is precisely what the pipeline will answer. |
 
-`tests/vcpkg.json` has all eight applied, plus a `jetson` feature for
-`ffmpeg[nvmpi]` that the current manifest has no equivalent of. Its `$comment`
+Two more replace things rankone carries outside vcpkg today:
+
+| # | Change | Why |
+| - | ------ | --- |
+| 9 | **The `cuda` feature takes `nvidia-cutlass` (pinned 4.8.0#1) instead of `cudnn`** | rank-1/rankone#4804 drops cuDNN; this registry's `nvidia-cutlass` is upstream's port without cuBLAS and cuDNN, replacing that PR's `cutlass` submodule. |
+| 10 | **Add an `amqp` feature: `amqpcpp`, `libuv`** | Replaces the `AMQP-CPP` and `libuv` submodules. It needs CMake changes and has a buildbot catch; see `docs/rankone-adoption.md`, step 2a. |
+
+`tests/vcpkg.json` has items 1–9 applied, plus a `jetson` feature for
+`ffmpeg[nvmpi]` that the current manifest has no equivalent of. It takes
+`amqpcpp` and `libuv` as plain dependencies rather than through an `amqp`
+feature. That is the same packages with the same ABI, since neither port has
+features of its own. Its `$comment`
 fields carry the reasoning inline, since a manifest cannot hold real comments.
 
 ## Adding or updating a port

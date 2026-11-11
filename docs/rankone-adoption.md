@@ -47,6 +47,7 @@ These are behaviour changes, not just plumbing. Each needs a look in review.
 | OpenCV modules | `dnn` and the codecs; every other module is always built, because 4.8.0's port cannot turn them off | `features2d` added; `calib3d`, `flann`, `objdetect`, `photo`, `stitching`, `video` off, as in `build_opencv.sh` |
 | OpenCV symbols | default visibility | `-fvisibility=hidden` |
 | CUDA (`cuda` feature) | `cudnn` on Linux; #4804 drops it and takes CUTLASS 4.8.0 from a submodule | `nvidia-cutlass` 4.8.0#1 from this registry: upstream's port with cuBLAS and cuDNN off, so no system cuDNN or cuBLAS anywhere |
+| AMQP-CPP, libuv | `AMQP-CPP` (v4.3.19) and `libuv` (`730e07e`, May 2022, between v1.44.1 and v1.44.2) **submodules**, `add_subdirectory`'d whenever `ROC_WITH_AMQP` is on | upstream vcpkg's `amqpcpp` 4.3.27 and `libuv` 1.52.1 behind a new `amqp` feature; both submodules can go — see "Dropping the AMQP-CPP and libuv submodules" |
 | FFmpeg | 7.0.2#7 via override | 7.0.2#8: the same FFmpeg plus `nvmpi` and `cuda-llvm` features, and native TLS per platform |
 | OpenSSL linkage on macOS, Windows | static | **dynamic**, like Linux — the LGPL-set rule is one list in every triplet |
 | Triplets | `ci/vcpkg/*.cmake` (4) | this repo's `triplets/` (10) |
@@ -125,6 +126,8 @@ with exactly these changes:
    registry serving the port, #4804 needs neither its `cutlass` submodule nor
    the `ci/vcpkg-ports` overlay port it carried before `1862285b2`; the
    registry's port is that overlay port (see its `portfile.cmake` header).
+10. an `amqp` feature for `amqpcpp` and `libuv`, replacing the `AMQP-CPP` and
+    `libuv` submodules. It needs the CMake changes below to be turned on.
 
 Overlay-triplet paths resolve relative to the manifest, so if the submodule goes
 elsewhere, change only that one line. Copying `triplets/` into `ci/vcpkg/`
@@ -132,12 +135,76 @@ instead of using a submodule also works, but the copy has to stay
 byte-identical: triplet file contents are part of every package's ABI hash, so a
 one-character drift gives a 0% hit rate with no error.
 
-**Measured:** resolved as committed (public URL, pinned baseline) with the
-`gui numa prometheus sentry` features on `x64-linux` and `arm64-osx`, this
-manifest yields *exactly* the package set, versions and per-package feature
-sets that this registry's CI builds in its desktop flavour. The only difference
-is the `amqpcpp` and `libuv` the test manifest carries to prove upstream
-fallback.
+**Measured:** resolved as committed (public URL, pinned baseline) on
+`x64-linux`, this manifest yields *exactly* the package set, versions and
+per-package feature sets that this registry's CI builds: 44 packages with
+`gui numa prometheus sentry amqp` against the desktop flavour, and 39 with
+`cuda numa amqp` against the cuda flavour. (The test manifest takes `amqpcpp`
+and `libuv` as plain dependencies rather than through a feature. Neither port
+has features of its own, so how they are requested does not change their ABI
+hash.) Without `amqp` the only difference is those two packages. The desktop
+comparison was also made on `arm64-osx` before `amqp` existed.
+
+### 2a. Dropping the AMQP-CPP and libuv submodules
+
+Every Linux preset that goes through vcpkg resolves `ROC_WITH_AMQP=ON`, through
+`default-linux` or directly: the `sdk-linux-*-ci` presets, `sdk-linux-x64-cuda-ci`,
+`leak-check-linux-x64`, `evals-linux-cuda-ci` and both `enterprise-search` ones.
+So does every Linux buildbot preset, which is where the catch is (below).
+
+Upstream vcpkg's ports need nothing from this registry:
+
+- `amqpcpp` 4.3.27 is static-only and sets `AMQP-CPP_LINUX_TCP` on Linux, as
+  `CMakeLists.txt` does today. Its config exports the bare `amqpcpp` target, and
+  installs `amqpcpp.h` and `amqpcpp/libuv.h`, the two headers the sources include.
+- `libuv` 1.52.1 is static on these triplets, exporting `libuv::uv_a`.
+- vcpkg's Linux toolchain adds `-fPIC` to every port, so the
+  `POSITION_INDEPENDENT_CODE` properties set on both today are no longer needed.
+
+The CMake changes in rankone, sketched against `master` (not built):
+
+```cmake
+# CMakeLists.txt, with the other feature switches before project(); the option
+# moves up from line 181 so it exists when the feature list is built.
+option(ROC_WITH_AMQP "Include AMQP dependencies for enterprise search deployments." OFF)
+if(ROC_WITH_AMQP)
+  list(APPEND VCPKG_MANIFEST_FEATURES "amqp")
+endif()
+
+# ... and in place of the add_subdirectory(AMQP-CPP) / add_subdirectory(libuv) block:
+if (ROC_WITH_AMQP)
+  add_compile_definitions(USE_AMQP)
+  find_package(amqpcpp CONFIG REQUIRED)
+  find_package(libuv CONFIG REQUIRED)
+  set(BR_THIRDPARTY_LIBS ${BR_THIRDPARTY_LIBS} amqpcpp libuv::uv_a)
+endif()
+```
+
+- `enterprise/CMakeLists.txt`: delete the two `if(NOT TARGET ...)` in-tree
+  fallbacks; the targets come from the `find_package` calls above.
+- `enterprise/roc-enterprise-worker/CMakeLists.txt`: link `libuv::uv_a`
+  instead of `uv_a`.
+- `tests/CMakeLists.txt`: drop `"*AMQP-CPP*"` and `"*libuv/*"` from the
+  coverage excludes.
+- `git rm AMQP-CPP libuv`, which also removes their `.gitmodules` entries.
+
+**The catch: buildbot.** The Linux release presets
+(`buildbot-worker-linux-*`, `raspberrypi`, `nist-*`, `tensorrt-disc-linux`) also
+turn `ROC_WITH_AMQP` on, and they do not use vcpkg, so `find_package` has
+nothing to find there. There are three ways to handle it, in order of preference:
+
+1. **Move buildbot onto vcpkg** (further work 6). That ends the problem for good.
+2. **Fall back to `FetchContent` when `find_package` misses**, pinned to the
+   versions vcpkg serves (`v4.3.27`, `v1.52.1`). There are still no submodules,
+   but buildbot fetches the sources at configure time, so the workers need
+   network access to GitHub.
+3. **Install both on the buildbot images** and point `CMAKE_PREFIX_PATH` at
+   them.
+
+**Versions move:** AMQP-CPP 4.3.19 → 4.3.27, and libuv from a May 2022 commit
+to 1.52.1. Both are patch- or minor-level, and libuv keeps API and ABI
+compatibility within 1.x. Still, run `enterprise-integration-tests.yml` on the
+PR, since those tests run the worker against a RabbitMQ container.
 
 ### 3. Layer the feed under the sticky disk
 
@@ -293,7 +360,9 @@ Roughly in order of value for effort:
 5. **Ubuntu 24.04 legs** for `build-enterprise-search.yml`, if its cold builds
    matter. Two more matrix entries; no port changes expected.
 6. **Move buildbot onto vcpkg plus the registry**, retiring `build_qt6.sh`,
-   `build_opencv.sh` and the 6.8.2/4.8.1 hand builds. That is the end state the
+   `build_opencv.sh` and the 6.8.2/4.8.1 hand builds. It is also what lets the
+   `AMQP-CPP` and `libuv` submodules go without a `FetchContent` fallback
+   (step 2a). That is the end state the
    parity work points at, and the moment CI and release stop differing.
 7. **Prune the feed.** GitHub Packages has no eviction, and every baseline bump
    adds a full set of packages per triplet. A scheduled job that deletes package
