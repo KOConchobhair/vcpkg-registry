@@ -32,7 +32,7 @@ env:
   # lukka/run-vcpkg checks out the consumer's builtin-baseline, so the two must
   # name the same commit for anything published here to restore there. Ports
   # outside this registry come from here too.
-  VCPKG_BASELINE: 2cfff9c458d9dcf642e9fa09ba624f9931bb5358
+  VCPKG_BASELINE: b58529e33332fbb6dfe20317a82009b78ceeab36
 
 jobs:
   build:

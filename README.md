@@ -8,11 +8,10 @@ does not carry at all, plus the overlay triplets that go with them.
 
 | Port | Upstream | Why it is here |
 | ---- | -------- | -------------- |
-| `qtbase` | 6.11.2#0 → **#2** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; forces `cups` on macOS only for `widgets` builds, which need it, rather than always — which made headless Qt impossible there |
+| `qtbase` | 6.11.3#0 → **#1** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; forces `cups` on macOS only for `widgets` builds, which need it, rather than always — which made headless Qt impossible there |
 | `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
 | `nvidia-cutlass` | 4.8.1#0 → **#1** | Turns off cuBLAS and cuDNN and drops the `cudnn` dependency, so CUDA builds need neither (rank-1/rankone#4804). 4.8.0#1 is also recorded, for rankone's exact-version pin |
-| `libuv` | 1.53.0#0, **unmodified** | Upstream's port from `1846dc5db9`: 1.53.0 landed in vcpkg after the `2cfff9c` baseline, which has 1.52.1, and rankone wants the latest 1.x for its `amqp` feature. Drop it from `packages` once the baseline passes `1846dc5db9` |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
 | `jetson-nvmpi` | — | `libnvmpi`, the library behind FFmpeg's `*_nvmpi` codecs on Jetson |
 
@@ -47,18 +46,27 @@ that makes every later comparison a clean three-way diff.
 When rankone moved its baseline to `2cfff9c458d9dcf642e9fa09ba624f9931bb5358`,
 `qtbase` was resynced to that commit's 6.11.2 (`b733ee79b`, then #2 in
 `fd1e42da4`): upstream's port
-taken wholesale, then the delta re-applied with `git apply -3`. `opencv4` and
+taken wholesale, then the delta re-applied with `git apply -3`. The next bump,
+to `b58529e33332fbb6dfe20317a82009b78ceeab36` (2026-11-11), did the same for
+6.11.3 (`6e896ff76`); only the version line conflicted. `opencv4` and
 `ffmpeg` were not — rankone pins both through overrides, and `ffmpeg` is held at
 7.0.2 by the nvmpi patch set — so their merge base is still `e0ad9522b`.
 
 `nvidia-cutlass` came in the same way: upstream's 4.8.0 from `2cfff9c` plus the
 delta (`4730f5df5`), then resynced to upstream's 4.8.1 at `e5680721cc`
-(`ffe1478e7`). Its merge base is `e5680721cc`.
+(`ffe1478e7`). Its merge base is `e5680721cc`, whose port is unchanged at
+`b58529e333`.
+
+**Ports without a delta are not mirrored here.** A newer upstream version is
+reached by moving the baseline, not by copying the port. `libuv` 1.53.0 was
+briefly carried unmodified (`a8bed6824`) because `2cfff9c` only had 1.52.1. The
+bump to `b58529e333` replaced it, and its `versions/` entry stays only because
+published entries are never rewritten.
 
 ### Seeing the local delta
 
 ```
-git diff 2cfff9c458d9dcf642e9fa09ba624f9931bb5358 HEAD -- ports/qtbase
+git diff b58529e33332fbb6dfe20317a82009b78ceeab36 HEAD -- ports/qtbase
 git diff e0ad9522b HEAD -- ports/opencv4
 git diff e5680721cc HEAD -- ports/nvidia-cutlass
 ```
@@ -607,14 +615,14 @@ Everything lives in that one file, so there is no `vcpkg-configuration.json`.
 `vcpkg-configuration` object adds this registry on top of it:
 
 ```json
-"builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
+"builtin-baseline": "b58529e33332fbb6dfe20317a82009b78ceeab36",
 "vcpkg-configuration": {
   "registries": [
     {
       "kind": "git",
       "repository": "https://github.com/KOConchobhair/vcpkg-registry",
       "baseline": "<commit sha of this repo>",
-      "packages": [ "ffmpeg", "jetson-multimedia-api", "jetson-nvmpi", "libuv", "nvidia-cutlass", "opencv4", "qtbase" ]
+      "packages": [ "ffmpeg", "jetson-multimedia-api", "jetson-nvmpi", "nvidia-cutlass", "opencv4", "qtbase" ]
     }
   ],
   "overlay-triplets": [ "../triplets" ]
@@ -640,18 +648,17 @@ Three things worth knowing about that block:
 Resolution is visible in the output, which is the easiest way to show which
 registry served what — anything annotated `git+` came from here, everything else
 from the builtin registry at the pinned baseline. `tests/vcpkg.json` deliberately
-depends on `amqpcpp` for exactly this reason: it is not in the `packages`
-list, so it has to come from upstream. (`libuv` used to play the same part,
-until the registry started carrying 1.53.0.) Both are also real rankone
+depends on `amqpcpp` and `libuv` for exactly this reason: neither is in the
+`packages` list, so both have to come from upstream. Both are also real rankone
 dependencies, replacing its `AMQP-CPP` and `libuv` submodules, so the headless
 pass prebuilds them on every leg except iOS and Android.
 
 ```
 ffmpeg[...]:arm64-linux@7.0.2#8   -- git+/registry@111c5649...
 opencv4[...]:arm64-linux@4.12.0#9 -- git+/registry@09539bf6...
-qtbase[...]:arm64-linux@6.11.2#2  -- git+/registry@fd2aeba3...
+qtbase[...]:arm64-linux@6.11.3#1  -- git+/registry@94839b1a...
 amqpcpp:arm64-linux@4.3.27
-libuv:arm64-linux@1.53.0          -- git+/registry@b1109168...
+libuv:arm64-linux@1.53.0
 openssl:arm64-linux@3.6.5#1
 protobuf:arm64-linux@3.19.4
 ```
@@ -666,7 +673,7 @@ other than what `ci/build_qt6.sh` and `ci/build_opencv.sh` produce.
 
 | # | Change | Why |
 | - | ------ | --- |
-| 1 | **Add a `registries` array to the existing `vcpkg-configuration` block**, with this registry and `packages`: `ffmpeg`, `jetson-multimedia-api`, `jetson-nvmpi`, `opencv4`, `qtbase`. Keep `builtin-baseline` as it is. | Nothing here is used otherwise. That block already holds `overlay-triplets`, so this extends it rather than adding it. |
+| 1 | **Add a `registries` array to the existing `vcpkg-configuration` block**, with this registry and `packages`: `ffmpeg`, `jetson-multimedia-api`, `jetson-nvmpi`, `nvidia-cutlass`, `opencv4`, `qtbase`. **Move `builtin-baseline` to `b58529e33332fbb6dfe20317a82009b78ceeab36`**, this registry's `VCPKG_BASELINE`. | Nothing here is used otherwise. That block already holds `overlay-triplets`, so this extends it rather than adding it. |
 | 2 | **Delete the `opencv4` override** (`4.8.0#22`) | This registry serves 4.12.0#9. An override naming a version the authoritative registry does not have fails to resolve. |
 | 3 | **Delete the `ffmpeg` override** (`7.0.2#7`) | Required, not merely redundant: this registry serves `7.0.2#8`, so an override naming `#7` no longer resolves. It was renumbered precisely so a modified port stops claiming upstream's identifier. |
 | 4 | **Add `features2d`, `intrinsics`, `fs`, `thread` to the `opencv4` features** | The four silent ones. `features2d` is newly a feature. The other three are not features at all in the 4.8.0#22 rankone pins today, so they are on there — but they are upstream *defaults* at 4.12.0, and the existing `"default-features": false` would start discarding them the moment the version moves. `intrinsics` is the expensive one — it maps to `CV_ENABLE_INTRINSICS`, so without it OpenCV has no SSE/AVX or NEON code paths at all. |
@@ -711,11 +718,10 @@ intermediate revisions:
 
 | Port | Upstream | Here |
 | ---- | -------- | ---- |
-| `qtbase` | 6.11.2#0 | 6.11.2#2 (6.11.1#4 and 6.11.2#1 are still recorded) |
+| `qtbase` | 6.11.3#0 | 6.11.3#1 (6.11.1#4, 6.11.2#1 and 6.11.2#2 are still recorded) |
 | `opencv4` | 4.12.0#7 | 4.12.0#9 (#8 was pushed on 2026-08-14 and its entry *replaced* by #9 a day later, rather than kept — the one exception to the rule below) |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
 | `nvidia-cutlass` | 4.8.1#0 | 4.8.1#1 (4.8.0#1 also recorded: upstream 4.8.0#0 plus one, what rankone pins) |
-| `libuv` | 1.53.0#0 | 1.53.0#0 — unmodified, so upstream's identifier is the honest one; the +1 rule is for ports with a delta |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
 | `jetson-nvmpi` | — | 3.10.0#0 |
 

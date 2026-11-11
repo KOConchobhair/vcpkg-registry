@@ -173,7 +173,7 @@
       "version": "3.19.4"
     }
   ],
-  "builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
+  "builtin-baseline": "b58529e33332fbb6dfe20317a82009b78ceeab36",
   "vcpkg-configuration": {
     "registries": [
       {
@@ -184,7 +184,6 @@
           "ffmpeg",
           "jetson-multimedia-api",
           "jetson-nvmpi",
-          "libuv",
           "nvidia-cutlass",
           "opencv4",
           "qtbase"

@@ -3,7 +3,8 @@
 How rankone's vcpkg builds would switch to this registry, what they gain and
 lose, and what has to line up for the prebuilt packages to actually restore.
 Written against rankone `master` at `a7efe3e71` (2026-11-01) and this registry
-at qtbase 6.11.2#2 and nvidia-cutlass 4.8.1#1 (4.8.0#1 pinned).
+at builtin-baseline `b58529e333` (2026-11-11), qtbase 6.11.3#1 and
+nvidia-cutlass 4.8.1#1 (4.8.0#1 pinned).
 
 **Short version.** Switching the manifest is worth doing on its own: it makes
 the GitHub Actions builds compile the same Qt and OpenCV *configuration* the
@@ -36,7 +37,7 @@ These are behaviour changes, not just plumbing. Each needs a look in review.
 
 | | Today (`ci/vcpkg.json`) | With the registry |
 | --- | --- | --- |
-| Qt version | 6.11.2 (baseline) | 6.11.2#2 — same Qt, ROC delta on top |
+| Qt version | 6.11.2 (baseline `2cfff9c`) | 6.11.3#1 — upstream's 6.11.3 at the new baseline `b58529e333`, ROC delta on top |
 | Qt TLS, Linux | OpenSSL **linked** | `openssl-runtime`: dlopened, like `build_qt6.sh -openssl-runtime` |
 | Qt TLS, Windows | OpenSSL | **Schannel** — no OpenSSL in Qt at all |
 | Qt TLS, macOS | SecureTransport | unchanged |
@@ -47,7 +48,7 @@ These are behaviour changes, not just plumbing. Each needs a look in review.
 | OpenCV modules | `dnn` and the codecs; every other module is always built, because 4.8.0's port cannot turn them off | `features2d` added; `calib3d`, `flann`, `objdetect`, `photo`, `stitching`, `video` off, as in `build_opencv.sh` |
 | OpenCV symbols | default visibility | `-fvisibility=hidden` |
 | CUDA (`cuda` feature) | `cudnn` on Linux; #4804 drops it and takes CUTLASS 4.8.0 from a submodule | `nvidia-cutlass` 4.8.0#1 from this registry: upstream's port with cuBLAS and cuDNN off, so no system cuDNN or cuBLAS anywhere |
-| AMQP-CPP, libuv | `AMQP-CPP` (v4.3.19) and `libuv` (`730e07e`, May 2022, between v1.44.1 and v1.44.2) **submodules**, `add_subdirectory`'d whenever `ROC_WITH_AMQP` is on | `amqpcpp` 4.3.27 (upstream vcpkg; the latest 4.x) and `libuv` 1.53.0 (this registry, upstream's port unmodified; the latest 1.x) behind a new `amqp` feature; both submodules can go — see "Dropping the AMQP-CPP and libuv submodules" |
+| AMQP-CPP, libuv | `AMQP-CPP` (v4.3.19) and `libuv` (`730e07e`, May 2022, between v1.44.1 and v1.44.2) **submodules**, `add_subdirectory`'d whenever `ROC_WITH_AMQP` is on | upstream vcpkg's `amqpcpp` 4.3.27 and `libuv` 1.53.0, the latest 4.x and 1.x, behind a new `amqp` feature; both submodules can go — see "Dropping the AMQP-CPP and libuv submodules" |
 | FFmpeg | 7.0.2#7 via override | 7.0.2#8: the same FFmpeg plus `nvmpi` and `cuda-llvm` features, and native TLS per platform |
 | OpenSSL linkage on macOS, Windows | static | **dynamic**, like Linux — the LGPL-set rule is one list in every triplet |
 | Triplets | `ci/vcpkg/*.cmake` (4) | this repo's `triplets/` (10) |
@@ -102,8 +103,10 @@ git rm -r ci/vcpkg        # the old triplets; the registry's replace them
 with exactly these changes:
 
 1. a `registries` entry for this repository, serving `ffmpeg`,
-   `jetson-multimedia-api`, `jetson-nvmpi`, `libuv`, `nvidia-cutlass`,
-   `opencv4`, `qtbase`
+   `jetson-multimedia-api`, `jetson-nvmpi`, `nvidia-cutlass`, `opencv4`,
+   `qtbase`, and `builtin-baseline` moved from `2cfff9c` to `b58529e333`, this
+   registry's `VCPKG_BASELINE`. It has to be the same commit, or no prebuilt
+   matches, and it brings Qt 6.11.3 and libuv 1.53.0
 2. `overlay-triplets` → `./vcpkg-registry/triplets`
 3. the `opencv4` and `ffmpeg` overrides deleted — the registry serves 4.12.0#9
    and 7.0.2#8, and an override naming a version the registry lacks does not
@@ -153,9 +156,7 @@ Every Linux preset that goes through vcpkg resolves `ROC_WITH_AMQP=ON`, through
 `leak-check-linux-x64`, `evals-linux-cuda-ci` and both `enterprise-search` ones.
 So does every Linux buildbot preset, which is where the catch is (below).
 
-Neither port needs a delta. `amqpcpp` comes from upstream vcpkg, and `libuv`
-from this registry, which carries upstream's 1.53.0 port unmodified because the
-`2cfff9c` baseline only has 1.52.1:
+Both come straight from upstream vcpkg at the baseline, with no delta:
 
 - `amqpcpp` 4.3.27 is static-only and sets `AMQP-CPP_LINUX_TCP` on Linux, as
   `CMakeLists.txt` does today. Its config exports the bare `amqpcpp` target, and
@@ -267,7 +268,7 @@ differing input means a clean 0% hit rate and no error.
 | --- | --- |
 | Port versions and feature sets | **Matches**, measured — see step 2 |
 | Triplet file contents | Matches once `overlay-triplets` points at this repo's `triplets/` |
-| vcpkg tool scripts | Matches while `builtin-baseline` equals this registry's `VCPKG_BASELINE`. `lukka/run-vcpkg@v11` with no inputs checks out the manifest's `builtin-baseline`, and `scripts/` is part of every hash. **Both are `2cfff9c` today, and must be bumped together** |
+| vcpkg tool scripts | Matches while `builtin-baseline` equals this registry's `VCPKG_BASELINE`. `lukka/run-vcpkg@v11` with no inputs checks out the manifest's `builtin-baseline`, and `scripts/` is part of every hash. **Both are `b58529e333` today, and must be bumped together** |
 | Compiler | **Unverified.** The hash includes a SHA-1 of the compiler *binaries* (`scripts/detect_compiler/CMakeLists.txt`), not just the version. The publisher builds on GitHub's `ubuntu-22.04`, `ubuntu-22.04-arm`, `macos-15` and `windows-2022` |
 
 Per rankone runner, the compiler row works out like this:
@@ -319,8 +320,8 @@ Per rankone runner, the compiler row works out like this:
   (token, `mono`, one more step per workflow) and the expectation that it is
   working when nothing checks that.
 - **Lock-step baselines.** Every rankone baseline bump needs this registry
-  resynced first — the bump to `2cfff9c` is exactly what forced the qtbase
-  6.11.1 → 6.11.2 resync here. Until it is, prebuilts stop matching, and a stale
+  resynced first — the bumps to `2cfff9c` and `b58529e333` are what forced the
+  qtbase 6.11.1 → 6.11.2 → 6.11.3 resyncs here. Until it is, prebuilts stop matching, and a stale
   registry can hand rankone an older Qt than the baseline would.
 - **Runner image churn re-keys the cache.** The compiler is hashed by its bytes,
   so when GitHub retires an image the prebuilts for it stop matching anything
