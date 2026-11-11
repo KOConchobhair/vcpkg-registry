@@ -5,7 +5,7 @@
     "registries": [
       {
         "kind": "git",
-        "baseline": "3ca77ed16a81d1a00d26d2a70b59b059ccdada1a",
+        "baseline": "6de168a3c5497fd4ea9cee695364365e75bc688e",
         "repository": "https://github.com/KOConchobhair/vcpkg-registry",
         "packages": [
           "ffmpeg",
