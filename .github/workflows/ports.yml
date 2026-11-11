@@ -128,8 +128,20 @@ jobs:
         # have neither, so it is installed here.
         run: brew install autoconf autoconf-archive automake libtool nasm pkgconf mono
 
-      # Windows needs nothing installed: windows-2022 ships MSVC, and vcpkg
-      # acquires nasm and perl itself when a port asks for them.
+      # Otherwise Windows needs nothing installed: windows-2022 ships MSVC, and
+      # vcpkg acquires nasm and perl itself when a port asks for them.
+      #
+      # The CUDA toolkit is for the desktop flavour's cuda feature: the cuda port
+      # only checks that nvcc exists, and nvidia-cutlass configures with it. Same
+      # action and version as rankone's build-sdk-windows.yaml. Neither port's ABI
+      # hash includes the toolkit, so the version need not match rankone's
+      # exactly for a prebuilt to restore there. The action sets CUDA_PATH, which
+      # vcpkg passes through to the port builds.
+      - name: Install CUDA toolkit (Windows)
+        if: runner.os == 'Windows'
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '13.3.1'
 
       # No actions/cache step. The GitHub Packages NuGet feed is the binary cache
       # now - see the "Binary caching" section of the README for the measurements

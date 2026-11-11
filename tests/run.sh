@@ -329,9 +329,10 @@ esac
 #   prometheus, sentry
 #               enterprise-search presets. Cheap, and leave the shared packages'
 #               feature sets alone, so they do not perturb anything else's hash
-#   cuda        Windows only here: there it is just ffmpeg[nvcodec], headers only.
-#               On Linux it also means cudnn, which needs a CUDA toolkit on the
-#               runner, so the Linux cuda flavour is not prebuilt
+#   cuda        Windows only here: ffmpeg[nvcodec] (headers only) and
+#               nvidia-cutlass, whose port needs nvcc, so the workflow installs
+#               the CUDA toolkit on that leg. The Linux runners have no toolkit,
+#               so the Linux cuda flavour is not prebuilt
 #
 # Mobile and embedded triplets have no desktop flavour - the manifest scopes gui
 # to !ios & !android, and nothing builds gui for an armhf board.
@@ -358,6 +359,24 @@ check_desktop_tree() {
       echo "  FAIL  nothing matching $pat in the desktop tree" >&2; fail=1
     fi
   done
+  # With cuda: CUTLASS's headers, and an exported target free of the cuBLAS and
+  # cuDNN stamps upstream's port adds - the whole point of this registry's port.
+  case " $DESKTOP_FEATURES " in
+    *" cuda "*)
+      local targets="$root/share/NvidiaCutlass/NvidiaCutlassTargets.cmake"
+      if [ -f "$root/include/cutlass/cutlass.h" ] && [ -f "$targets" ]; then
+        echo "  ok    nvidia-cutlass"
+      else
+        echo "  FAIL  nvidia-cutlass headers or CMake targets missing" >&2; fail=1
+      fi
+      if grep -q 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" 2>/dev/null; then
+        echo "  FAIL  NvidiaCutlassTargets.cmake still references cuBLAS/cuDNN:" >&2
+        grep -n 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" >&2; fail=1
+      else
+        echo "  ok    nvidia-cutlass without cuBLAS/cuDNN"
+      fi
+      ;;
+  esac
   return "$fail"
 }
 
