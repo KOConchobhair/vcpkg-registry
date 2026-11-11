@@ -11,6 +11,7 @@ does not carry at all, plus the overlay triplets that go with them.
 | `qtbase` | 6.11.2#0 → **#2** | Adds the missing `schannel` TLS backend for Windows and an `openssl-runtime` feature so Qt dlopens libssl instead of linking it; forces `cups` on macOS only for `widgets` builds, which need it, rather than always — which made headless Qt impossible there |
 | `opencv4` | 4.12.0#7 → **#9** | Makes six always-on modules selectable, so the module set can be cut down |
 | `ffmpeg` | 7.0.2#7 → **#8** | Adds `nvmpi` and `cuda-llvm` features |
+| `nvidia-cutlass` | 4.8.1#0 → **#1** | Turns off cuBLAS and cuDNN and drops the `cudnn` dependency, so CUDA builds need neither (rank-1/rankone#4804). 4.8.0#1 is also recorded, for rankone's exact-version pin |
 | `jetson-multimedia-api` | — | NVIDIA Jetson Linux Multimedia API (L4T 36.4 / JetPack 6) headers and helper sources |
 | `jetson-nvmpi` | — | `libnvmpi`, the library behind FFmpeg's `*_nvmpi` codecs on Jetson |
 
@@ -49,11 +50,16 @@ taken wholesale, then the delta re-applied with `git apply -3`. `opencv4` and
 `ffmpeg` were not — rankone pins both through overrides, and `ffmpeg` is held at
 7.0.2 by the nvmpi patch set — so their merge base is still `e0ad9522b`.
 
+`nvidia-cutlass` came in the same way: upstream's 4.8.0 from `2cfff9c` plus the
+delta (`4730f5df5`), then resynced to upstream's 4.8.1 at `e5680721cc`
+(`ffe1478e7`). Its merge base is `e5680721cc`.
+
 ### Seeing the local delta
 
 ```
 git diff 2cfff9c458d9dcf642e9fa09ba624f9931bb5358 HEAD -- ports/qtbase
 git diff e0ad9522b HEAD -- ports/opencv4
+git diff e5680721cc HEAD -- ports/nvidia-cutlass
 ```
 
 Around 100 added lines across four files, and every change is **purely
@@ -694,6 +700,7 @@ intermediate revisions:
 | `qtbase` | 6.11.2#0 | 6.11.2#2 (6.11.1#4 and 6.11.2#1 are still recorded) |
 | `opencv4` | 4.12.0#7 | 4.12.0#9 (#8 was pushed on 2026-08-14 and its entry *replaced* by #9 a day later, rather than kept — the one exception to the rule below) |
 | `ffmpeg` | 7.0.2#7 | 7.0.2#8 |
+| `nvidia-cutlass` | 4.8.1#0 | 4.8.1#1 (4.8.0#1 also recorded: upstream 4.8.0#0 plus one, what rankone pins) |
 | `jetson-multimedia-api` | — | 36.4.0#0 |
 | `jetson-nvmpi` | — | 3.10.0#0 |
 

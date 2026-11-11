@@ -194,6 +194,12 @@
   },
   "overrides": [
     {
+      "$comment": "Exactly 4.8.0: rankone's cuda/CMakeLists.txt asks find_package(NvidiaCutlass 4.8.0 EXACT), because its kernel choices and test tolerances were validated against it. The registry's baseline is 4.8.1#1.",
+      "name": "nvidia-cutlass",
+      "version": "4.8.0",
+      "port-version": 1
+    },
+    {
       "name": "protobuf",
       "version": "3.19.4"
     }

@@ -26,11 +26,15 @@ There is no classic-mode path here and none is wanted.
   `builtin-baseline` for everything else — then builds and verifies. This is the
   only mode that exercises `versions/`, and it is what CI runs. On the four
   desktop triplets it then installs the manifest a second time into
-  `installed-desktop/`, with the features rankone's builds enable (`gui`, `numa`,
-  `prometheus`, `sentry`, plus `cuda` on Windows). That pass is for the binary
-  cache — a cached package is keyed on its feature set, and rankone never asks
-  for headless Qt — so it gets a presence check rather than `verify.sh`, whose
-  assertions are about the headless tree. `DESKTOP_FEATURES=` (empty) skips it.
+  `installed-desktop/`, with the features rankone's builds enable (`gui`,
+  `numa`, `prometheus`, `sentry`, plus `cuda` on Windows, which brings in
+  `nvidia-cutlass` and so needs the CUDA toolkit the workflow installs on that
+  leg; locally, set `DESKTOP_FEATURES` without `cuda` if you have none). That
+  pass is for the binary cache — a cached package is keyed on its feature set,
+  and rankone never asks for headless Qt — so it gets a presence check (and,
+  with `cuda`, a check that CUTLASS's exported targets carry no cuBLAS/cuDNN
+  references) rather than `verify.sh`, whose assertions are about the headless
+  tree. `DESKTOP_FEATURES=` (empty) skips it.
 - **`resolve`** is the same path, stopping after resolution. Use it to check a
   feature graph or a freshly recorded version in seconds.
 - **`overlay`** swaps in `--overlay-ports` so it acts on the working tree with no
