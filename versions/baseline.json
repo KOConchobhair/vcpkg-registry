@@ -12,6 +12,10 @@
       "baseline": "3.10.0",
       "port-version": 0
     },
+    "libuv": {
+      "baseline": "1.53.0",
+      "port-version": 0
+    },
     "nvidia-cutlass": {
       "baseline": "4.8.1",
       "port-version": 1
