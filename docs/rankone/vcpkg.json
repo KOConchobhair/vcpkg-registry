@@ -179,7 +179,7 @@
       {
         "kind": "git",
         "repository": "https://github.com/KOConchobhair/vcpkg-registry",
-        "baseline": "6de168a3c5497fd4ea9cee695364365e75bc688e",
+        "baseline": "b1e823322fafe492451049e719df44fa8f5d76e4",
         "packages": [
           "ffmpeg",
           "jetson-multimedia-api",
