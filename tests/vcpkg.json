@@ -115,7 +115,7 @@
       "description": "Enable CUDA support",
       "dependencies": [
         {
-          "$comment": "CUTLASS, not cuDNN or cuBLAS (rank-1/rankone#4804). This registry's port turns both off; upstream's would pull cudnn back in.",
+          "$comment": "CUTLASS for the CUDA engine (rank-1/rankone#4804). This registry serves it; its port needs only the CUDA toolkit.",
           "name": "nvidia-cutlass",
           "platform": "linux | (windows & x64)"
         },

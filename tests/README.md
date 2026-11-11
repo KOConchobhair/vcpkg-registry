@@ -24,17 +24,18 @@ There is no classic-mode path here and none is wanted.
 - **`consumer`** (the default) resolves through the manifest's own
   `vcpkg-configuration` — this registry over git, the builtin registry at
   `builtin-baseline` for everything else — then builds and verifies. This is the
-  only mode that exercises `versions/`, and it is what CI runs. On the four
-  desktop triplets it then installs the manifest a second time into
-  `installed-desktop/`, with the features rankone's builds enable (`gui`,
-  `numa`, `prometheus`, `sentry`, plus `cuda` on Windows, which brings in
-  `nvidia-cutlass` and so needs the CUDA toolkit the workflow installs on that
-  leg; locally, set `DESKTOP_FEATURES` without `cuda` if you have none). That
-  pass is for the binary cache — a cached package is keyed on its feature set,
-  and rankone never asks for headless Qt — so it gets a presence check (and,
-  with `cuda`, a check that CUTLASS's exported targets carry no cuBLAS/cuDNN
-  references) rather than `verify.sh`, whose assertions are about the headless
-  tree. `DESKTOP_FEATURES=` (empty) skips it.
+  only mode that exercises `versions/`, and it is what CI runs. It then installs
+  the manifest again in the flavours rankone's builds use, each into its own
+  `installed-<flavour>/`: **desktop** on the four desktop triplets (`gui`,
+  `numa`, `prometheus`, `sentry`, plus `cuda` on Windows) and **cuda** on
+  `x64-linux` and `arm64-linux` (`cuda`, `numa`). Those passes are for the binary
+  cache — a cached package is keyed on its feature set, and rankone never asks
+  for headless Qt — so they get presence checks rather than `verify.sh`, whose
+  assertions are about the headless tree. With `cuda`, that includes a check
+  that CUTLASS's exported targets carry no cuBLAS/cuDNN references. `cuda`
+  needs nvcc, which the workflow installs on those legs; locally, set
+  `CUDA_FEATURES=` and leave `cuda` out of `DESKTOP_FEATURES` if you have none.
+  `DESKTOP_FEATURES=` (empty) skips the desktop pass.
 - **`resolve`** is the same path, stopping after resolution. Use it to check a
   feature graph or a freshly recorded version in seconds.
 - **`overlay`** swaps in `--overlay-ports` so it acts on the working tree with no

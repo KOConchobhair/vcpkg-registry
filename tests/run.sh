@@ -313,15 +313,17 @@ case "$MODE" in
     ;;
 esac
 
-# The desktop flavour: the same manifest again, with the features rankone's own
-# vcpkg builds turn on, into a second install root.
+# Extra flavours: the same manifest again, with the features rankone's own vcpkg
+# builds turn on, each into its own install root (installed-<flavour>/).
 #
-# This exists for the binary cache, not as a test. A cached package is keyed on
-# its feature set, and every rankone configuration that goes through vcpkg enables
-# gui (CMakeLists.txt adds it whenever BR_EMBEDDED is off) and, on Linux, numa. The
-# headless pass above therefore produces a qtbase no rankone build ever asks for -
-# and qtbase is the package most worth not rebuilding. Building this flavour here
-# is what lets a consumer restore it instead.
+# These exist for the binary cache, not as tests. A cached package is keyed on
+# its feature set, and every rankone configuration that goes through vcpkg
+# enables gui or cuda. The headless pass above therefore produces a qtbase no
+# rankone build ever asks for - and qtbase is the package most worth not
+# rebuilding. Building these flavours here is what lets a consumer restore them
+# instead. Packages a flavour shares with an earlier pass have the same ABI and
+# restore from the cache rather than rebuild, so a flavour costs only what is
+# new in it.
 #
 # What rankone enables, from CMakeLists.txt and CMakePresets.json:
 #   gui         every preset except the BR_EMBEDDED cuda one
@@ -329,15 +331,26 @@ esac
 #   prometheus, sentry
 #               enterprise-search presets. Cheap, and leave the shared packages'
 #               feature sets alone, so they do not perturb anything else's hash
-#   cuda        Windows only here: ffmpeg[nvcodec] (headers only) and
-#               nvidia-cutlass, whose port needs nvcc, so the workflow installs
-#               the CUDA toolkit on that leg. The Linux runners have no toolkit,
-#               so the Linux cuda flavour is not prebuilt
+#   cuda        nvidia-cutlass and ffmpeg[nvcodec]. The cuda port needs nvcc, so
+#               the workflow installs the CUDA toolkit on every leg that builds
+#               this feature (x64-windows, x64-linux, arm64-linux)
 #
-# Mobile and embedded triplets have no desktop flavour - the manifest scopes gui
-# to !ios & !android, and nothing builds gui for an armhf board.
+# The flavours, one per distinct rankone feature set worth caching:
+#   desktop     gui numa prometheus sentry, plus cuda on Windows - build-sdk.yml,
+#               build-sdk-macos.yml, build-sdk-windows.yaml (gui cuda). The
+#               extra features only touch packages of their own
+#   cuda        cuda numa, Linux only - build-sdk-cuda.yml (BR_EMBEDDED, no gui).
+#               Its own flavour rather than cuda added to desktop on Linux,
+#               because cuda changes ffmpeg's feature set, and build-sdk.yml's
+#               gui-only builds would then never hit ffmpeg. enterprise-search
+#               (gui and cuda) is covered package by package by the two
 #
-# DESKTOP_FEATURES overrides the list; set it empty to skip the pass entirely.
+# Mobile and embedded triplets have neither - the manifest scopes gui to
+# !ios & !android, nothing builds gui for an armhf board, and CUDA is x64 and
+# arm64 only.
+#
+# DESKTOP_FEATURES and CUDA_FEATURES override the lists; set one empty to skip
+# that pass. Locally, leave cuda out unless nvcc is installed.
 desktop_features() {
   case "$TRIPLET" in
     *-ios*|*-android|arm-linux) return 0 ;;
@@ -346,9 +359,14 @@ desktop_features() {
   esac
 }
 
+cuda_features() {
+  case "$TRIPLET" in
+    x64-linux|arm64-linux) echo "cuda numa" ;;
+  esac
+}
+
 check_desktop_tree() {
   local root="$1" fail=0 pat
-  echo "=== desktop flavour checks: $root ==="
   # Names differ per platform: libQt6Gui.so (Linux), QtGui.framework (macOS),
   # Qt6Gui.dll (Windows). sentry is a static library everywhere but Windows.
   for pat in 'Qt6Gui*' 'Qt6Widgets*' 'Qt6Sql*' 'Qt6Xml*' '*sentry*'; do
@@ -359,43 +377,63 @@ check_desktop_tree() {
       echo "  FAIL  nothing matching $pat in the desktop tree" >&2; fail=1
     fi
   done
-  # With cuda: CUTLASS's headers, and an exported target free of the cuBLAS and
-  # cuDNN stamps upstream's port adds - the whole point of this registry's port.
-  case " $DESKTOP_FEATURES " in
-    *" cuda "*)
-      local targets="$root/share/NvidiaCutlass/NvidiaCutlassTargets.cmake"
-      if [ -f "$root/include/cutlass/cutlass.h" ] && [ -f "$targets" ]; then
-        echo "  ok    nvidia-cutlass"
-      else
-        echo "  FAIL  nvidia-cutlass headers or CMake targets missing" >&2; fail=1
-      fi
-      if grep -q 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" 2>/dev/null; then
-        echo "  FAIL  NvidiaCutlassTargets.cmake still references cuBLAS/cuDNN:" >&2
-        grep -n 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" >&2; fail=1
-      else
-        echo "  ok    nvidia-cutlass without cuBLAS/cuDNN"
-      fi
-      ;;
+  return "$fail"
+}
+
+# CUTLASS's headers, an exported target free of the cuBLAS and cuDNN stamps
+# upstream's port adds - the whole point of this registry's port - and FFmpeg's
+# nvcodec headers.
+check_cuda_tree() {
+  local root="$1" fail=0
+  local targets="$root/share/NvidiaCutlass/NvidiaCutlassTargets.cmake"
+  if [ -f "$root/include/cutlass/cutlass.h" ] && [ -f "$targets" ]; then
+    echo "  ok    nvidia-cutlass"
+  else
+    echo "  FAIL  nvidia-cutlass headers or CMake targets missing" >&2; fail=1
+  fi
+  if grep -q 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" 2>/dev/null; then
+    echo "  FAIL  NvidiaCutlassTargets.cmake still references cuBLAS/cuDNN:" >&2
+    grep -n 'CUTLASS_ENABLE_CU\(BLAS\|DNN\)\|cublas' "$targets" >&2; fail=1
+  else
+    echo "  ok    nvidia-cutlass without cuBLAS/cuDNN"
+  fi
+  if [ -d "$root/include/ffnvcodec" ]; then
+    echo "  ok    ffnvcodec (ffmpeg[nvcodec])"
+  else
+    echo "  FAIL  no include/ffnvcodec in the tree" >&2; fail=1
+  fi
+  return "$fail"
+}
+
+# run_flavour <name> <features>: install into installed-<name>, then check it.
+run_flavour() {
+  local name="$1" features="$2" root="$WORK/installed-$1" a f fail=0
+  if [ -z "$features" ]; then
+    echo "=== no ${name} flavour for ${TRIPLET} ==="
+    return 0
+  fi
+  local args=()
+  for a in "${ARGS[@]}"; do
+    case "$a" in
+      --x-install-root=*) args+=(--x-install-root="$root") ;;
+      *)                  args+=("$a") ;;
+    esac
+  done
+  for f in $features; do args+=(--x-feature="$f"); done
+  echo
+  echo "=== vcpkg ${name} flavour ${TRIPLET}: ${features} ==="
+  "$VCPKG" "${args[@]}"
+  echo "=== ${name} flavour checks: $root/$TRIPLET ==="
+  case "$name" in
+    desktop) check_desktop_tree "$root/$TRIPLET" || fail=1 ;;
+  esac
+  case " $features " in
+    *" cuda "*) check_cuda_tree "$root/$TRIPLET" || fail=1 ;;
   esac
   return "$fail"
 }
 
 if [ "$MODE" = consumer ]; then
-  DESKTOP_FEATURES="${DESKTOP_FEATURES-$(desktop_features)}"
-  if [ -n "$DESKTOP_FEATURES" ]; then
-    DESKTOP_ARGS=()
-    for a in "${ARGS[@]}"; do
-      case "$a" in
-        --x-install-root=*) DESKTOP_ARGS+=(--x-install-root="$WORK/installed-desktop") ;;
-        *)                  DESKTOP_ARGS+=("$a") ;;
-      esac
-    done
-    for f in $DESKTOP_FEATURES; do DESKTOP_ARGS+=(--x-feature="$f"); done
-    echo
-    echo "=== vcpkg desktop flavour ${TRIPLET}: ${DESKTOP_FEATURES} ==="
-    "$VCPKG" "${DESKTOP_ARGS[@]}"
-    check_desktop_tree "$WORK/installed-desktop/$TRIPLET"
-  else
-    echo "=== no desktop flavour for ${TRIPLET} ==="
-  fi
+  run_flavour desktop "${DESKTOP_FEATURES-$(desktop_features)}"
+  run_flavour cuda "${CUDA_FEATURES-$(cuda_features)}"
 fi

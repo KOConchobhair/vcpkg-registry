@@ -117,17 +117,14 @@ with exactly these changes:
    `openssl` feature is limited to Linux and Android, so Apple and Windows keep
    their native TLS
 8. a `jetson` feature for `ffmpeg[nvmpi]`; nothing turns it on yet
-9. the `cuda` feature takes `nvidia-cutlass` instead of `cudnn`, as
-   rank-1/rankone#4804 does, plus an override pinning it to 4.8.0#1. The pin
-   is needed: #4804's vcpkg variant (`79d74ef97`) asks
+9. the `cuda` feature is `nvidia-cutlass` and `ffmpeg[nvcodec]`, with `cudnn`
+   gone, as in rank-1/rankone#4804, plus an override pinning `nvidia-cutlass`
+   to 4.8.0#1. The pin is needed: #4804's vcpkg variant (`79d74ef97`) asks
    `find_package(NvidiaCutlass 4.8.0 EXACT CONFIG)` and links
    `nvidia::cutlass::cutlass`, and the registry's baseline is 4.8.1#1. With the
    registry serving the port, #4804 needs neither its `cutlass` submodule nor
-   the `ci/vcpkg-ports` overlay port it carried before `1862285b2`. Upstream's
-   port was the reason for that overlay port: it depends on `cudnn` and builds
-   CUTLASS with cuBLAS and cuDNN on, which also stamps `CUTLASS_ENABLE_CUBLAS=1`
-   and `CUTLASS_ENABLE_CUDNN=1` on the exported target and makes
-   `cutlass_tools_util_includes` link `cublas`.
+   the `ci/vcpkg-ports` overlay port it carried before `1862285b2`; the
+   registry's port is that overlay port (see its `portfile.cmake` header).
 
 Overlay-triplet paths resolve relative to the manifest, so if the submodule goes
 elsewhere, change only that one line. Copying `triplets/` into `ci/vcpkg/`
@@ -214,12 +211,14 @@ Per rankone runner, the compiler row works out like this:
   Xcode is a guaranteed miss.
 - **Blacksmith `ubuntu-2404` (enterprise-search):** **no hits** — gcc 13 against
   the publisher's gcc 11. That would need 24.04 legs here (see further work).
-- **CUDA:** `nvidia-cutlass` (and the `cuda` port) are prebuilt on
-  `x64-windows` only, where the publishing leg installs CUDA 13.3.1 with
-  rankone's own `Jimver/cuda-toolkit` step. The toolkit is not part of either
-  port's ABI hash, so its version does not matter. The Linux runners have no
-  toolkit, so a Linux CUDA build compiles `nvidia-cutlass` itself (headers
-  only). Everything else in that graph can still hit.
+- **CUDA:** `nvidia-cutlass`, the `cuda` port and `ffmpeg[nvcodec]` are
+  prebuilt on `x64-windows` (desktop flavour, `gui cuda`), and on `x64-linux`
+  and `arm64-linux` in a `cuda` flavour (`cuda numa`, as `build-sdk-cuda.yml`).
+  The publishing legs install CUDA with the same `Jimver/cuda-toolkit` steps
+  rankone uses. The toolkit is not part of either port's ABI hash, so its
+  version does not matter. Linux CUDA is its own flavour, not added to the
+  desktop one, because `cuda` changes `ffmpeg`'s feature set, and
+  `build-sdk.yml`'s non-CUDA builds would then never hit `ffmpeg`.
 
 ## Pros and cons
 
@@ -293,17 +292,13 @@ Roughly in order of value for effort:
    workers too. It needs an OIDC role that trusts this repository's workflow.
 5. **Ubuntu 24.04 legs** for `build-enterprise-search.yml`, if its cold builds
    matter. Two more matrix entries; no port changes expected.
-6. **A Linux CUDA leg**, to prebuild `nvidia-cutlass` and `ffmpeg[nvcodec]`
-   for `build-sdk-cuda.yml` and enterprise-search. It needs a CUDA toolkit on
-   the runner. With cuDNN gone after #4804 there is little to gain: CUTLASS is
-   headers only.
-7. **Move buildbot onto vcpkg plus the registry**, retiring `build_qt6.sh`,
+6. **Move buildbot onto vcpkg plus the registry**, retiring `build_qt6.sh`,
    `build_opencv.sh` and the 6.8.2/4.8.1 hand builds. That is the end state the
    parity work points at, and the moment CI and release stop differing.
-8. **Prune the feed.** GitHub Packages has no eviction, and every baseline bump
+7. **Prune the feed.** GitHub Packages has no eviction, and every baseline bump
    adds a full set of packages per triplet. A scheduled job that deletes package
    versions older than the current baseline's would keep it bounded.
-9. **Resync opencv4 to upstream 4.14.0.** Upstream moved on at `2cfff9c`; the
+8. **Resync opencv4 to upstream 4.14.0.** Upstream moved on at `2cfff9c`; the
    registry stays on 4.12.0 for now because rankone overrides OpenCV anyway and
    the module-dependency declarations would have to be re-derived from 4.14.0's
    `ocv_define_module` calls. Worth doing together with step 2's accuracy runs,

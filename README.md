@@ -726,8 +726,11 @@ runs `tests/verify.sh` on the result. On the four desktop triplets it then build
 the **desktop flavour** too — the same manifest with the `gui`, `numa`,
 `prometheus` and `sentry` features (and `cuda` on Windows) that rankone's own
 builds turn on — so the binary cache holds the `qtbase[gui,…]` rankone actually
-requests rather than only the headless one it never does. Both trees are
-packaged and attested. All runner images used are free for public repositories:
+requests rather than only the headless one it never does. `x64-linux` and
+`arm64-linux` also build a **cuda flavour** (`cuda numa`, as rankone's
+`build-sdk-cuda.yml`): `nvidia-cutlass` and `ffmpeg[nvcodec]`. The legs that
+build `cuda` install the CUDA toolkit first. Every tree is packaged and
+attested. All runner images used are free for public repositories:
 
 | Triplet | Runner | Host triplet |
 | ------- | ------ | ------------ |
