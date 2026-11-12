@@ -1025,6 +1025,14 @@ the first with every leg and both flavours green from one commit (`cc5244e`) —
 `tests/verify.sh` passes on all ten legs, with platform-inapplicable checks
 counted as `skip` rather than passed.
 
+At builtin-baseline `b58529e333` (qtbase 6.11.3#1): run
+[43119740350](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/43119740350)
+(`94fbbc3`), all 11 jobs green, after a cold rebuild in which every leg but
+arm64-osx passed; that one hit pcre2's anonymous GitHub API fetch (see
+`seed_pcre2_sljit` in `tests/run.sh`). `tools/prune-feed.py --apply` then cut the
+feed from 1,203 versions to the 335 that run uses, and a rerun of it restored
+every package with nothing rebuilt (`x64-linux`: 35, 44 and 39 restored).
+
 `nvidia-cutlass` 4.8.0#1 joined on 2026-11-11 in run
 [43090674783](https://github.com/KOConchobhair/vcpkg-registry/actions/runs/43090674783)
 (`8ad9ff2`), all 11 jobs green. The `cuda` checks pass on `x64-windows`
